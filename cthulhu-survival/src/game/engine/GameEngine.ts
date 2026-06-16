@@ -2,7 +2,6 @@ import type { GameState, MapTile, Position } from '../types/game'
 import type { Identity } from '../types/identity'
 import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { GameEvent, Ending } from '../types/events'
-import { IDENTITIES } from '../data/identities'
 import { MAP_TILES, getTileAt } from '../data/events'
 import { ITEMS } from '../data/items'
 import {
@@ -38,7 +37,6 @@ import { clamp } from '../utils/random'
 export interface EngineState {
   state: GameState
   identity: Identity
-  inventory: InventoryItem[]
 }
 
 export interface MoveResult {
@@ -55,29 +53,33 @@ export interface MoveResult {
 export class GameEngine {
   private state: GameState
   private identity: Identity
-  private inventory: InventoryItem[]
 
   constructor(identity: Identity) {
     this.identity = identity
-    this.inventory = itemIdsToInventory([...identity.startInventory])
     this.state = this.createInitialState(identity)
   }
 
   static fromSerialized(data: SerializedSave): GameEngine {
-    const engine = new GameEngine(IDENTITIES[0])
-    engine.state = data.state
+    const identity = data.identity
+    const engine = new GameEngine(identity)
+    engine.state = {
+      ...data.state,
+      inventory: Array.isArray(data.state.inventory) && data.state.inventory.length > 0
+        ? data.state.inventory
+        : (data.inventory || []),
+    }
     engine.identity = data.identity
-    engine.inventory = data.inventory
     return engine
   }
 
   private createInitialState(identity: Identity): GameState {
+    const inventory = itemIdsToInventory([...identity.startInventory])
     return {
       status: 'playing',
       time: createInitialTime(identity),
       stats: createInitialStats(identity),
       position: { ...identity.startPosition },
-      inventory: itemIdsToInventory([...identity.startInventory]),
+      inventory,
       equippedItem: null,
       flags: {},
       discoveredTiles: this.getInitialDiscoveredTiles(identity.startPosition),
@@ -100,7 +102,14 @@ export class GameEngine {
   }
 
   getState(): GameState {
-    return { ...this.state }
+    return {
+      ...this.state,
+      inventory: [...this.state.inventory],
+      discoveredTiles: [...this.state.discoveredTiles],
+      triggeredEvents: [...this.state.triggeredEvents],
+      unlockedEndings: [...this.state.unlockedEndings],
+      flags: { ...this.state.flags },
+    }
   }
 
   getIdentity(): Identity {
@@ -108,7 +117,7 @@ export class GameEngine {
   }
 
   getInventory(): InventoryItem[] {
-    return [...this.inventory]
+    return [...this.state.inventory]
   }
 
   getTileAtPosition(x: number, y: number): MapTile | undefined {
@@ -124,6 +133,10 @@ export class GameEngine {
       ...t,
       explored: this.state.discoveredTiles.includes(t.id),
     }))
+  }
+
+  private updateInventory(newInventory: InventoryItem[]) {
+    this.state.inventory = [...newInventory]
   }
 
   moveTo(x: number, y: number): MoveResult {
@@ -230,8 +243,8 @@ export class GameEngine {
     if (!result) return null
 
     this.state.stats = result.consequences.stats
-    this.inventory = result.consequences.inventory
-    this.state.flags = result.consequences.flags
+    this.updateInventory(result.consequences.inventory)
+    this.state.flags = { ...result.consequences.flags }
 
     if (result.consequences.triggeredEvents.length > 0) {
       this.state.triggeredEvents.push(...result.consequences.triggeredEvents)
@@ -285,32 +298,33 @@ export class GameEngine {
   checkChoiceAvail(event: GameEvent, choiceId: string) {
     const choice = event.choices.find(c => c.id === choiceId)
     if (!choice) return { available: false }
-    return checkChoiceRequirements(choice, this.inventory, this.state.stats, this.identity)
+    return checkChoiceRequirements(choice, this.state.inventory, this.state.stats, this.identity)
   }
 
   getCraftableRecipes(): CraftRecipe[] {
-    return getAvailableRecipes(this.inventory, this.state.flags)
+    return getAvailableRecipes(this.state.inventory, this.state.flags)
   }
 
   canCraft(recipe: CraftRecipe) {
-    return canCraft(recipe, this.inventory, this.state.stats)
+    return canCraft(recipe, this.state.inventory, this.state.stats)
   }
 
   craft(recipe: CraftRecipe) {
-    const result = craftItem(recipe, this.inventory, this.state.stats, this.identity)
-    this.inventory = result.inventory
+    const result = craftItem(recipe, this.state.inventory, this.state.stats, this.identity)
+    this.updateInventory(result.inventory)
     this.state.stats = result.stats
     return result
   }
 
   useItem(itemId: string): { success: boolean; message: string } {
-    const idx = this.inventory.findIndex(i => i.itemId === itemId)
+    const idx = this.state.inventory.findIndex(i => i.itemId === itemId)
     if (idx === -1) return { success: false, message: '物品不存在' }
 
     const itemData = ITEMS[itemId]
     if (!itemData) return { success: false, message: '物品数据错误' }
 
-    if (itemData.type !== 'consumable' && !itemData.hpOnUse && !itemData.sanityOnUse) {
+    if (itemData.type !== 'consumable' && !itemData.hpOnUse && !itemData.sanityOnUse
+        && !itemData.pollutionOnUse && !itemData.hungerOnUse && !itemData.energyOnUse) {
       return { success: false, message: '该物品无法使用' }
     }
 
@@ -330,7 +344,7 @@ export class GameEngine {
       this.state.stats.energy = clamp(this.state.stats.energy + itemData.energyOnUse, 0, 100)
     }
 
-    this.inventory = removeFromInventory(this.inventory, itemId, 1)
+    this.updateInventory(removeFromInventory(this.state.inventory, itemId, 1))
 
     const immediateEnding = checkForImmediateEnding(this.state)
     if (immediateEnding) {
@@ -355,7 +369,7 @@ export class GameEngine {
   }
 
   checkEndings(): Ending[] {
-    return checkAvailableEndings(this.state, this.inventory)
+    return checkAvailableEndings(this.state, this.state.inventory)
   }
 
   triggerEnding(endingId: string): void {

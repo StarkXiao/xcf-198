@@ -11,10 +11,11 @@ export const useGameStore = defineStore('game', () => {
   const engine = ref<GameEngine | null>(null)
   const state = ref<GameState | null>(null)
   const identity = ref<Identity | null>(null)
-  const inventory = ref<InventoryItem[]>([])
   const messages = ref<string[]>([])
   const currentEvent = ref<GameEvent | null>(null)
   const lastEventResult = ref<EventResult | null>(null)
+
+  const inventory = computed<InventoryItem[]>(() => state.value?.inventory ?? [])
 
   const currentTile = computed<MapTile | undefined>(() => {
     if (!engine.value || !state.value) return undefined
@@ -41,7 +42,6 @@ export const useGameStore = defineStore('game', () => {
     if (!engine.value) return
     state.value = engine.value.getState()
     identity.value = engine.value.getIdentity()
-    inventory.value = engine.value.getInventory()
   }
 
   function moveTo(pos: Position) {
@@ -135,7 +135,7 @@ export const useGameStore = defineStore('game', () => {
     return {
       state: state.value,
       identity: identity.value,
-      inventory: inventory.value,
+      inventory: state.value.inventory,
       savedAt: Date.now(),
     }
   }
@@ -158,7 +158,6 @@ export const useGameStore = defineStore('game', () => {
     engine.value = null
     state.value = null
     identity.value = null
-    inventory.value = []
     messages.value = []
     currentEvent.value = null
     lastEventResult.value = null

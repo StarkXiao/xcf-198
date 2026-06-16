@@ -162,6 +162,110 @@ export const ENDINGS: Ending[] = [
       { type: 'sanity_above', value: 40 },
     ],
   },
+  {
+    id: 'ending_holy_light',
+    name: '圣火长明',
+    type: 'good',
+    description: '修道院认可了你的虔诚，圣火将为你指引回家的路。',
+    epilogue: `
+修道院的大门为你敞开。
+
+你穿过漫长的回廊，来到圣殿的最深处。在那里，一团永不熄灭的圣火在祭坛上跳动。
+
+"你证明了，即使在最黑暗的深渊边缘，人类的信仰也能照亮归途。"
+大修道院长将手放在你的额头上，圣火的温暖流入你的全身。
+
+你感到污染从身体中被驱逐，那些扭曲的幻象渐渐退去。
+世界在你眼前变得清晰——那是你自己的世界，那个正常的世界。
+
+你回到了家乡的教堂。
+阳光透过彩色玻璃窗洒在你身上，温暖而安宁。
+你再也没有听到那些低语，再也没有看到那些阴影。
+
+但每当夜深人静，你会在胸前画一个十字——
+为了纪念那个你选择光明而非深渊的夜晚。
+
+圣火长明。信仰永存。
+
+—— 结局：圣火长明 ——
+    `.trim(),
+    requirements: [
+      { type: 'reputation_above', factionId: 'monastery', value: 85 },
+      { type: 'sanity_above', value: 50 },
+      { type: 'hp_above', value: 1 },
+      { type: 'flag_set', flagKey: 'monastery_ally', flagValue: true },
+    ],
+  },
+  {
+    id: 'ending_deep_awakening',
+    name: '深渊觉醒',
+    type: 'neutral',
+    description: '你接受了深渊的召唤，旧日的血脉在你体内觉醒。',
+    epilogue: `
+水面分开，你走了下去——不是在水面之上，而是在水面之下。
+
+你的皮肤上浮现出细密的鳞片，手指间长出了半透明的蹼。
+你不再需要呼吸空气，深海的黑暗是你的归宿。
+
+那些曾经令你恐惧的低语，现在只是亲人的问候。
+那些曾经让你疯狂的幻象，现在只是日常的风景。
+
+你潜入湖底，潜入海底，潜入比海更深的地方。
+在那里，巨大的阴影在沉睡中缓缓呼吸。
+
+"你回来了。"它们说。
+"我一直都在这里。"你回答。
+
+你不再是人类了。
+但你不觉得遗憾——因为你知道，真正的你从未属于那个地面上的世界。
+
+Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn.
+
+—— 结局：深渊觉醒 ——
+    `.trim(),
+    requirements: [
+      { type: 'reputation_above', factionId: 'deep_ones', value: 85 },
+      { type: 'pollution_above', value: 60 },
+      { type: 'flag_set', flagKey: 'deep_ones_ally', flagValue: true },
+    ],
+  },
+  {
+    id: 'ending_balance',
+    name: '天平之衡',
+    type: 'secret',
+    description: '你维持了各方势力的平衡，成为了守望者的领袖。',
+    epilogue: `
+你站在世界的交汇点上。
+光明与深渊，信仰与知识，人类与旧日——这些力量在你身上达成了平衡。
+
+守望者的面具落在你手中。
+"天平已经选中了它的守护者。"
+
+你戴上面具，世界在你眼中展现出了从未有过的全貌。
+你看到了修道院的圣火，也看到了深渊的暗流。
+你看到了人类挣扎求存的身影，也看到了旧日支配者沉睡的躯体。
+
+你不会偏袒任何一方。
+你只是注视，记录，在必要的时候——轻轻拨动天平。
+
+这个世界需要一个见证者。
+需要一个站在光明与黑暗之间的人。
+
+从今天起，你就是那只永远睁开的眼睛。
+
+—— 隐藏结局：天平之衡 ——
+    `.trim(),
+    requirements: [
+      { type: 'reputation_above', factionId: 'watchers', value: 70 },
+      { type: 'reputation_below', factionId: 'monastery', value: 30 },
+      { type: 'reputation_above', factionId: 'monastery', value: -20 },
+      { type: 'reputation_below', factionId: 'deep_ones', value: 30 },
+      { type: 'reputation_above', factionId: 'deep_ones', value: -20 },
+      { type: 'flag_set', flagKey: 'watchers_ally', flagValue: true },
+      { type: 'sanity_above', value: 30 },
+      { type: 'hp_above', value: 1 },
+    ],
+  },
 ]
 
 export function getEndingById(id: string): Ending | undefined {

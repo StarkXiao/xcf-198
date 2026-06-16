@@ -10,6 +10,7 @@ import Inventory from '@components/Inventory.vue'
 import CraftPanel from '@components/CraftPanel.vue'
 import EventDialog from '@components/EventDialog.vue'
 import SaveLoadPanel from '@components/SaveLoadPanel.vue'
+import ReputationPanel from '@components/ReputationPanel.vue'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -93,6 +94,8 @@ function checkEndings() {
         </div>
 
         <StatusBar />
+
+        <ReputationPanel />
 
         <div class="messages-panel panel" ref="messagesRef">
           <h4 class="msg-title">📜 日志</h4>

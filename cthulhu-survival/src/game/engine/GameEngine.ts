@@ -2,6 +2,7 @@ import type { GameState, MapTile, Position } from '../types/game'
 import type { Identity } from '../types/identity'
 import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { GameEvent, Ending } from '../types/events'
+import type { ReputationMap } from '../types/faction'
 import { MAP_TILES, getTileAt } from '../data/events'
 import { ITEMS } from '../data/items'
 import {
@@ -32,6 +33,7 @@ import {
   checkAvailableEndings,
   checkForImmediateEnding,
 } from '../systems/endingSystem'
+import { createDefaultReputation } from '../systems/reputationSystem'
 import { clamp } from '../utils/random'
 
 export interface EngineState {
@@ -67,6 +69,7 @@ export class GameEngine {
       inventory: Array.isArray(data.state.inventory) && data.state.inventory.length > 0
         ? data.state.inventory
         : (data.inventory || []),
+      reputation: data.state.reputation || createDefaultReputation(),
     }
     engine.identity = data.identity
     return engine
@@ -87,6 +90,7 @@ export class GameEngine {
       unlockedEndings: [],
       currentEndingId: null,
       currentEventId: null,
+      reputation: createDefaultReputation(),
     }
   }
 
@@ -109,6 +113,7 @@ export class GameEngine {
       triggeredEvents: [...this.state.triggeredEvents],
       unlockedEndings: [...this.state.unlockedEndings],
       flags: { ...this.state.flags },
+      reputation: { ...this.state.reputation },
     }
   }
 
@@ -245,6 +250,7 @@ export class GameEngine {
     this.state.stats = result.consequences.stats
     this.updateInventory(result.consequences.inventory)
     this.state.flags = { ...result.consequences.flags }
+    this.state.reputation = { ...result.consequences.reputation }
 
     if (result.consequences.triggeredEvents.length > 0) {
       this.state.triggeredEvents.push(...result.consequences.triggeredEvents)
@@ -298,11 +304,11 @@ export class GameEngine {
   checkChoiceAvail(event: GameEvent, choiceId: string) {
     const choice = event.choices.find(c => c.id === choiceId)
     if (!choice) return { available: false }
-    return checkChoiceRequirements(choice, this.state.inventory, this.state.stats, this.identity)
+    return checkChoiceRequirements(choice, this.state.inventory, this.state.stats, this.identity, this.state.reputation)
   }
 
   getCraftableRecipes(): CraftRecipe[] {
-    return getAvailableRecipes(this.state.inventory, this.state.flags)
+    return getAvailableRecipes(this.state.inventory, this.state.flags, this.state.reputation)
   }
 
   canCraft(recipe: CraftRecipe) {

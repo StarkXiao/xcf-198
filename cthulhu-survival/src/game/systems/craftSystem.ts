@@ -1,16 +1,26 @@
 import type { CraftRecipe, InventoryItem } from '../types/items'
+import type { ReputationMap } from '../types/faction'
 import { RECIPES } from '../data/recipes'
 import { chance } from '../utils/random'
 import type { PlayerStats } from '../types/game'
 import type { Identity } from '../types/identity'
+import { checkReputationRequirement } from './reputationSystem'
 
 export function getAvailableRecipes(
   _inventory: InventoryItem[],
   flags: Record<string, boolean | number | string>,
+  reputation: ReputationMap = { monastery: 0, deep_ones: 0, watchers: 0 },
 ): CraftRecipe[] {
   return RECIPES.filter(recipe => {
     if (recipe.unlockedByDefault) return true
     if (recipe.requiredFlag && flags[recipe.requiredFlag]) return true
+    if (recipe.requiredReputation) {
+      return checkReputationRequirement(
+        reputation,
+        recipe.requiredReputation.factionId,
+        recipe.requiredReputation.minReputation,
+      )
+    }
     return false
   })
 }

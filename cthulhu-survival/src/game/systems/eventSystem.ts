@@ -2,10 +2,13 @@ import type { GameEvent, EventChoice, EventConsequence } from '../types/events'
 import type { PlayerStats, GameState } from '../types/game'
 import type { InventoryItem } from '../types/items'
 import type { Identity } from '../types/identity'
+import type { ReputationMap } from '../types/faction'
 import { EVENTS, getEventById } from '../data/events'
 import { chance } from '../utils/random'
 import { addToInventory, removeFromInventory, hasItem } from './craftSystem'
 import { modifyHp, modifySanity, modifyHunger, modifyEnergy, applyPollutionEffect } from './pollutionSystem'
+import { modifyReputation, checkReputationRequirement, checkReputationBelow } from './reputationSystem'
+import { getReputationChangeDescription } from '../data/factions'
 
 export interface EventResult {
   event: GameEvent
@@ -15,6 +18,7 @@ export interface EventResult {
     stats: PlayerStats
     inventory: InventoryItem[]
     flags: Record<string, boolean | number | string>
+    reputation: ReputationMap
     triggeredEvents: string[]
     unlockedEndings: string[]
     unlockedRecipes: string[]
@@ -32,6 +36,15 @@ export function shouldTriggerEvent(
 ): boolean {
   if (event.onceOnly && state.triggeredEvents.includes(event.id)) {
     return false
+  }
+
+  for (const cond of event.conditions) {
+    if (cond.type === 'reputation_above' && cond.factionId) {
+      if (!checkReputationRequirement(state.reputation, cond.factionId, cond.value || 0)) return false
+    }
+    if (cond.type === 'reputation_below' && cond.factionId) {
+      if (!checkReputationBelow(state.reputation, cond.factionId, cond.value || 0)) return false
+    }
   }
 
   const trigger = event.trigger
@@ -69,6 +82,7 @@ export function checkChoiceRequirements(
   inventory: InventoryItem[],
   stats: PlayerStats,
   identity: Identity,
+  reputation: ReputationMap = { monastery: 0, deep_ones: 0, watchers: 0 },
 ): { available: boolean; reason?: string } {
   if (!choice.requirements) return { available: true }
 
@@ -94,6 +108,11 @@ export function checkChoiceRequirements(
           return { available: false, reason: `不具备所需技能` }
         }
         break
+      case 'min_reputation':
+        if (!req.factionId || !checkReputationRequirement(reputation, req.factionId, req.value || 0)) {
+          return { available: false, reason: `声望不足` }
+        }
+        break
     }
   }
   return { available: true }
@@ -114,6 +133,7 @@ export function executeEventChoice(
   let stats = { ...state.stats }
   let inventory = [...state.inventory]
   let flags = { ...state.flags }
+  let reputation = { ...state.reputation }
   const triggeredEvents: string[] = []
   const unlockedEndings: string[] = []
   const unlockedRecipes: string[] = []
@@ -123,10 +143,11 @@ export function executeEventChoice(
   const consequences = success ? choice.consequences : getFailureConsequences(choice)
 
   for (const cons of consequences) {
-    const result = applyConsequence(cons, stats, inventory, flags, identity)
+    const result = applyConsequence(cons, stats, inventory, flags, reputation, identity)
     stats = result.stats
     inventory = result.inventory
     flags = result.flags
+    reputation = result.reputation
     if (result.message) messages.push(result.message)
     if (result.triggeredEvent) triggeredEvents.push(result.triggeredEvent)
     if (result.unlockedEnding) unlockedEndings.push(result.unlockedEnding)
@@ -147,6 +168,7 @@ export function executeEventChoice(
       stats,
       inventory,
       flags,
+      reputation,
       triggeredEvents,
       unlockedEndings,
       unlockedRecipes,
@@ -170,11 +192,13 @@ function applyConsequence(
   stats: PlayerStats,
   inventory: InventoryItem[],
   flags: Record<string, boolean | number | string>,
+  reputation: ReputationMap,
   identity: Identity,
 ): {
   stats: PlayerStats
   inventory: InventoryItem[]
   flags: Record<string, boolean | number | string>
+  reputation: ReputationMap
   message?: string
   triggeredEvent?: string
   unlockedEnding?: string
@@ -182,7 +206,7 @@ function applyConsequence(
   revealedTile?: string
   actionPointDelta?: number
 } {
-  let result: any = { stats, inventory, flags }
+  let result: any = { stats, inventory, flags, reputation }
 
   switch (cons.type) {
     case 'gain_item':
@@ -229,6 +253,12 @@ function applyConsequence(
       break
     case 'gain_action_points':
       result.actionPointDelta = cons.value || 0
+      break
+    case 'change_reputation':
+      if (cons.factionId && cons.value) {
+        result.reputation = modifyReputation(reputation, cons.factionId, cons.value)
+        result.message = getReputationChangeDescription(cons.factionId, cons.value)
+      }
       break
     case 'text_feedback':
       result.message = cons.text

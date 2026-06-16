@@ -1,4 +1,5 @@
 import type { TileType } from './game'
+import type { FactionId } from './faction'
 
 export type EventType = 'exploration' | 'encounter' | 'vision' | 'ritual' | 'choice' | 'discovery'
 
@@ -38,12 +39,13 @@ export interface EventTrigger {
 }
 
 export interface EventCondition {
-  type: 'has_item' | 'has_flag' | 'pollution_above' | 'sanity_below' | 'day_above' | 'identity_is'
+  type: 'has_item' | 'has_flag' | 'pollution_above' | 'sanity_below' | 'day_above' | 'identity_is' | 'reputation_above' | 'reputation_below'
   itemId?: string
   flagKey?: string
   flagValue?: boolean | number | string
   value?: number
   identityId?: string
+  factionId?: FactionId
 }
 
 export interface EventChoice {
@@ -56,11 +58,12 @@ export interface EventChoice {
 }
 
 export interface EventChoiceRequirement {
-  type: 'has_item' | 'has_flag' | 'min_sanity' | 'min_energy' | 'identity_skill'
+  type: 'has_item' | 'has_flag' | 'min_sanity' | 'min_energy' | 'identity_skill' | 'min_reputation'
   itemId?: string
   flagKey?: string
   value?: number
   skillId?: string
+  factionId?: FactionId
 }
 
 export type ConsequenceType =
@@ -78,6 +81,7 @@ export type ConsequenceType =
   | 'reveal_tile'
   | 'text_feedback'
   | 'unlock_recipe'
+  | 'change_reputation'
 
 export interface EventConsequence {
   type: ConsequenceType
@@ -91,6 +95,7 @@ export interface EventConsequence {
   recipeId?: string
   tileId?: string
   text?: string
+  factionId?: FactionId
 }
 
 export interface Ending {
@@ -104,9 +109,10 @@ export interface Ending {
 }
 
 export interface EndingRequirement {
-  type: 'flag_set' | 'pollution_above' | 'pollution_below' | 'sanity_above' | 'sanity_below' | 'day_reach' | 'has_item' | 'hp_above'
+  type: 'flag_set' | 'pollution_above' | 'pollution_below' | 'sanity_above' | 'sanity_below' | 'day_reach' | 'has_item' | 'hp_above' | 'reputation_above' | 'reputation_below'
   flagKey?: string
   flagValue?: boolean | number | string
   value?: number
   itemId?: string
+  factionId?: FactionId
 }

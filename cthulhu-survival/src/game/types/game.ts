@@ -1,4 +1,5 @@
 import type { InventoryItem } from './items'
+import type { ReputationMap } from './faction'
 
 export type DayPhase = 'day' | 'night'
 
@@ -60,4 +61,5 @@ export interface GameState {
   unlockedEndings: string[]
   currentEndingId: string | null
   currentEventId: string | null
+  reputation: ReputationMap
 }

@@ -1,3 +1,5 @@
+import type { FactionId } from './faction'
+
 export type ItemType = 'material' | 'tool' | 'consumable' | 'artifact' | 'weapon'
 
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'legendary'
@@ -52,4 +54,8 @@ export interface CraftRecipe {
   difficulty: number
   unlockedByDefault: boolean
   requiredFlag?: string
+  requiredReputation?: {
+    factionId: FactionId
+    minReputation: number
+  }
 }

@@ -15,7 +15,7 @@ import ReputationPanel from '@components/ReputationPanel.vue'
 const router = useRouter()
 const gameStore = useGameStore()
 const uiStore = useUiStore()
-const { state, identity, currentTile, messages } = storeToRefs(gameStore)
+const { state, identity, currentTile, messages, currentDangerInfo, lootQualityModifier } = storeToRefs(gameStore)
 const { activePanel } = storeToRefs(uiStore)
 
 const messagesRef = ref<HTMLDivElement | null>(null)
@@ -110,10 +110,32 @@ function checkEndings() {
       <main class="center-panel">
         <div class="top-actions">
           <div class="tile-info panel">
-            <span class="tile-name">
-              📍 {{ currentTile?.name || '未知之地' }}
-            </span>
+            <div class="tile-header">
+              <span class="tile-name">
+                📍 {{ currentTile?.name || '未知之地' }}
+              </span>
+              <span
+                v-if="currentDangerInfo"
+                class="danger-indicator"
+                :style="{ color: currentDangerInfo.color, borderColor: currentDangerInfo.color }"
+                :title="currentDangerInfo.description"
+              >
+                {{ currentDangerInfo.icon }} 危险度: {{ currentDangerInfo.value }}%
+              </span>
+            </div>
             <span class="tile-desc">{{ currentTile?.description || '' }}</span>
+            <div v-if="currentDangerInfo" class="danger-details">
+              <span class="detail-item" :title="'基础危险度: ' + currentDangerInfo.tileDanger">
+                🏔️ 区域: {{ currentDangerInfo.tileDanger }}
+              </span>
+              <span class="detail-item" :title="'昼夜修正: ' + currentDangerInfo.nightModifier.toFixed(1) + 'x'">
+                {{ state?.time.phase === 'night' ? '🌙' : '☀️' }} 
+                {{ state?.time.phase === 'night' ? '夜间' : '白天' }} x{{ currentDangerInfo.nightModifier.toFixed(1) }}
+              </span>
+              <span class="detail-item" :title="'污染修正: ' + currentDangerInfo.pollutionModifier.toFixed(1) + 'x'">
+                ☣️ 污染 x{{ currentDangerInfo.pollutionModifier.toFixed(1) }}
+              </span>
+            </div>
           </div>
           <div class="action-btns">
             <button
@@ -136,7 +158,10 @@ function checkEndings() {
         <div class="map-container panel">
           <PhaserGame :width="520" :height="520" />
           <div class="map-hint">
-            💡 点击相邻的格子即可移动探索。每次移动消耗 1 点行动力。
+            💡 点击相邻的格子即可移动探索。危险区域会消耗额外行动力，并影响事件概率和掉落品质。
+            <span v-if="lootQualityModifier" class="loot-quality-info">
+              | {{ lootQualityModifier.description }} (x{{ lootQualityModifier.multiplier.toFixed(1) }})
+            </span>
           </div>
         </div>
       </main>
@@ -315,8 +340,15 @@ function checkEndings() {
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
+}
+
+.tile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 .tile-name {
@@ -324,6 +356,16 @@ function checkEndings() {
   font-weight: 600;
   font-family: var(--font-display);
   color: var(--color-cthulhu-green-glow);
+}
+
+.danger-indicator {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border: 1px solid;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
 }
 
 .tile-desc {
@@ -334,6 +376,22 @@ function checkEndings() {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.danger-details {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-border);
+}
+
+.detail-item {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .action-btns {
@@ -363,6 +421,11 @@ function checkEndings() {
   color: var(--color-text-muted);
   text-align: center;
   padding: 4px 12px;
+}
+
+.loot-quality-info {
+  color: var(--color-cthulhu-green-glow);
+  font-weight: 500;
 }
 
 .panel-tabs {

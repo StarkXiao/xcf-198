@@ -24,6 +24,16 @@ export function pickRandomWeighted<T>(items: T[], weights: number[]): T {
   return items[items.length - 1]
 }
 
+export function weightedRandom(weights: number[]): number {
+  const total = weights.reduce((sum, w) => sum + w, 0)
+  let random = Math.random() * total
+  for (let i = 0; i < weights.length; i++) {
+    random -= weights[i]
+    if (random <= 0) return i
+  }
+  return weights.length - 1
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }

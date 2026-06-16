@@ -12,6 +12,8 @@ export type EventTriggerType =
   | 'random'
   | 'flag_set'
 
+export type EventDangerCategory = 'beneficial' | 'neutral' | 'weird' | 'dangerous' | 'deadly'
+
 export interface GameEvent {
   id: string
   type: EventType
@@ -24,6 +26,10 @@ export interface GameEvent {
   sanityGain?: number
   onceOnly: boolean
   priority: number
+  weight?: number
+  dangerCategory?: EventDangerCategory
+  minDangerLevel?: number
+  maxDangerLevel?: number
 }
 
 export interface EventTrigger {

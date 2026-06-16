@@ -3,6 +3,39 @@ import type { ReputationMap } from './faction'
 
 export type DayPhase = 'day' | 'night'
 
+export type DangerLevel = 'safe' | 'low' | 'medium' | 'high' | 'extreme'
+
+export interface DangerInfo {
+  level: DangerLevel
+  value: number
+  tileDanger: number
+  nightModifier: number
+  pollutionModifier: number
+  description: string
+  color: string
+  icon: string
+}
+
+export interface LootQualityModifier {
+  multiplier: number
+  rarityBoost: number
+  description: string
+}
+
+export interface ActionCostModifier {
+  movement: number
+  exploration: number
+  combat: number
+  description: string
+}
+
+export interface EventWeightModifier {
+  weirdEventMultiplier: number
+  dangerousEventMultiplier: number
+  beneficialEventMultiplier: number
+  description: string
+}
+
 export interface TimeState {
   day: number
   phase: DayPhase

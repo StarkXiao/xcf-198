@@ -1,4 +1,4 @@
-import type { GameState, MapTile, Position } from '../types/game'
+import type { GameState, MapTile, Position, DangerInfo } from '../types/game'
 import type { Identity } from '../types/identity'
 import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { GameEvent, Ending } from '../types/events'
@@ -33,6 +33,14 @@ import {
   checkForImmediateEnding,
 } from '../systems/endingSystem'
 import { createDefaultReputation } from '../systems/reputationSystem'
+import {
+  calculateDangerInfo,
+  calculateMovementCost,
+  weightEventsByDanger,
+  filterEventsByDanger,
+  calculateLootQualityModifier,
+} from '../systems/dangerSystem'
+import type { LootQualityModifier } from '../types/game'
 import { clamp } from '../utils/random'
 
 export interface EngineState {
@@ -47,8 +55,11 @@ export interface MoveResult {
   events: GameEvent[]
   messages: string[]
   actionConsumed: boolean
+  actionCost: number
   phaseChanged: boolean
   dayChanged: boolean
+  dangerInfo: DangerInfo | null
+  lootQualityModifier: LootQualityModifier | null
 }
 
 export class GameEngine {
@@ -143,6 +154,18 @@ export class GameEngine {
     this.state.inventory = [...newInventory]
   }
 
+  getCurrentDangerInfo(tile: MapTile | undefined = this.getCurrentTile()): DangerInfo | null {
+    if (!tile) return null
+    return calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution)
+  }
+
+  getLootQualityModifier(): LootQualityModifier | null {
+    const tile = this.getCurrentTile()
+    const dangerInfo = this.getCurrentDangerInfo(tile)
+    if (!dangerInfo) return null
+    return calculateLootQualityModifier(dangerInfo)
+  }
+
   moveTo(x: number, y: number): MoveResult {
     const messages: string[] = []
     const dx = Math.abs(x - this.state.position.x)
@@ -156,8 +179,11 @@ export class GameEngine {
         events: [],
         messages: ['无法移动到该位置'],
         actionConsumed: false,
+        actionCost: 0,
         phaseChanged: false,
         dayChanged: false,
+        dangerInfo: null,
+        lootQualityModifier: null,
       }
     }
 
@@ -170,10 +196,17 @@ export class GameEngine {
         events: [],
         messages: ['那里没有可探索的区域'],
         actionConsumed: false,
+        actionCost: 0,
         phaseChanged: false,
         dayChanged: false,
+        dangerInfo: null,
+        lootQualityModifier: null,
       }
     }
+
+    const dangerInfo = calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution)
+    const lootQualityModifier = calculateLootQualityModifier(dangerInfo)
+    const actionCost = calculateMovementCost(dangerInfo, 1)
 
     this.state.position = { x, y }
 
@@ -183,7 +216,12 @@ export class GameEngine {
       messages.push(`你发现了新的区域：${tile.name}`)
     }
 
-    const actionResult = consumeAction(this.state.time, 1)
+    messages.push(`${dangerInfo.icon} ${dangerInfo.description}`)
+    if (actionCost > 1) {
+      messages.push(`危险区域消耗了额外的行动力：${actionCost} 点`)
+    }
+
+    const actionResult = consumeAction(this.state.time, actionCost)
     this.state.time = actionResult.time
 
     let phaseChanged = actionResult.phaseChanged
@@ -200,8 +238,11 @@ export class GameEngine {
       )
     }
 
-    const events = findTriggeredEvents(this.state, tile.type, tile.id)
-    const triggerableEvents = events.filter(e => {
+    const rawEvents = findTriggeredEvents(this.state, tile.type, tile.id)
+    const filteredEvents = filterEventsByDanger(rawEvents, dangerInfo)
+    const weightedEvents = weightEventsByDanger(filteredEvents, dangerInfo)
+
+    const triggerableEvents = weightedEvents.filter(e => {
       if (e.trigger.type === 'tile_enter' && e.trigger.tileId) {
         return tile.hasEvent && tile.eventId === e.id
       }
@@ -221,8 +262,11 @@ export class GameEngine {
       events: triggerableEvents,
       messages,
       actionConsumed: true,
+      actionCost,
       phaseChanged,
       dayChanged,
+      dangerInfo,
+      lootQualityModifier,
     }
   }
 

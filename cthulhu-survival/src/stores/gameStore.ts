@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { GameState, MapTile, Position } from '@game/types/game'
+import type { GameState, MapTile, Position, DangerInfo, LootQualityModifier } from '@game/types/game'
 import type { Identity } from '@game/types/identity'
 import type { InventoryItem, CraftRecipe } from '@game/types/items'
 import type { GameEvent, Ending } from '@game/types/events'
@@ -34,6 +34,16 @@ export const useGameStore = defineStore('game', () => {
   const day = computed(() => state.value?.time.day ?? 1)
 
   const reputation = computed<ReputationMap>(() => state.value?.reputation ?? { monastery: 0, deep_ones: 0, watchers: 0 })
+
+  const currentDangerInfo = computed<DangerInfo | null>(() => {
+    if (!engine.value) return null
+    return engine.value.getCurrentDangerInfo()
+  })
+
+  const lootQualityModifier = computed<LootQualityModifier | null>(() => {
+    if (!engine.value) return null
+    return engine.value.getLootQualityModifier()
+  })
 
   const reputationSummary = computed(() => {
     if (!state.value) return []
@@ -187,6 +197,8 @@ export const useGameStore = defineStore('game', () => {
     day,
     reputation,
     reputationSummary,
+    currentDangerInfo,
+    lootQualityModifier,
     startGame,
     moveTo,
     executeChoice,

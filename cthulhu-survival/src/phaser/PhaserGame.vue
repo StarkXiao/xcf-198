@@ -54,6 +54,7 @@ onMounted(() => {
           scene.updateDiscoveredTiles(state.value.discoveredTiles)
           scene.updatePlayerPosition(state.value.position, identity.value?.icon || '👤')
           scene.setIsNight(isNight.value)
+          scene.setPollution(state.value.stats.pollution)
         }
       }
     }, 100)
@@ -84,6 +85,15 @@ watch(
   (night) => {
     if (gameScene) {
       gameScene.setIsNight(night)
+    }
+  },
+)
+
+watch(
+  () => state.value?.stats.pollution,
+  (pollution) => {
+    if (gameScene && pollution !== undefined) {
+      gameScene.setPollution(pollution)
     }
   },
 )

@@ -20,6 +20,23 @@ export interface Item {
   hungerOnUse?: number
   energyOnUse?: number
   discardable: boolean
+  minDangerForDrop?: number
+  maxDangerForDrop?: number
+}
+
+export interface LootTableEntry {
+  itemId: string
+  minCount: number
+  maxCount: number
+  weight: number
+  minDanger?: number
+  maxDanger?: number
+}
+
+export interface LootResult {
+  itemId: string
+  count: number
+  qualityBonus: number
 }
 
 export type ItemEffectType = 'heal' | 'restore_sanity' | 'reduce_pollution' | 'restore_hunger' | 'restore_energy' | 'damage' | 'buff'

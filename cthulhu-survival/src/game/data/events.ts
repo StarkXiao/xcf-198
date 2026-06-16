@@ -204,6 +204,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: false,
     priority: 1,
+    weight: 10,
+    dangerCategory: 'beneficial',
+    maxDangerLevel: 1,
     choices: [
       {
         id: 'rest',
@@ -245,6 +248,8 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: false,
     priority: 1,
+    weight: 8,
+    dangerCategory: 'neutral',
     choices: [
       {
         id: 'gather',
@@ -299,6 +304,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: false,
     priority: 2,
+    weight: 7,
+    dangerCategory: 'dangerous',
+    minDangerLevel: 1,
     choices: [
       {
         id: 'fight',
@@ -348,6 +356,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: true,
     priority: 2,
+    weight: 6,
+    dangerCategory: 'weird',
+    minDangerLevel: 2,
     pollutionGain: 10,
     sanityGain: -10,
     choices: [
@@ -389,6 +400,8 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: false,
     priority: 1,
+    weight: 8,
+    dangerCategory: 'neutral',
     choices: [
       {
         id: 'collect_wood',
@@ -431,6 +444,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: true,
     priority: 2,
+    weight: 6,
+    dangerCategory: 'weird',
+    minDangerLevel: 2,
     pollutionGain: 5,
     sanityGain: -5,
     choices: [
@@ -493,6 +509,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: true,
     priority: 3,
+    weight: 5,
+    dangerCategory: 'deadly',
+    minDangerLevel: 3,
     pollutionGain: 10,
     sanityGain: -15,
     choices: [
@@ -555,6 +574,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: false,
     priority: 2,
+    weight: 6,
+    dangerCategory: 'weird',
+    minDangerLevel: 1,
     pollutionGain: 5,
     choices: [
       {
@@ -610,6 +632,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: false,
     priority: 1,
+    weight: 9,
+    dangerCategory: 'beneficial',
+    maxDangerLevel: 2,
     choices: [
       {
         id: 'fish',
@@ -656,6 +681,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: true,
     priority: 3,
+    weight: 5,
+    dangerCategory: 'dangerous',
+    minDangerLevel: 3,
     pollutionGain: 10,
     sanityGain: -10,
     choices: [
@@ -704,6 +732,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: true,
     priority: 2,
+    weight: 5,
+    dangerCategory: 'weird',
+    minDangerLevel: 2,
     pollutionGain: 5,
     sanityGain: -5,
     choices: [
@@ -751,6 +782,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: true,
     priority: 2,
+    weight: 6,
+    dangerCategory: 'dangerous',
+    minDangerLevel: 2,
     choices: [
       {
         id: 'search_houses',
@@ -800,6 +834,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: true,
     priority: 2,
+    weight: 7,
+    dangerCategory: 'neutral',
+    minDangerLevel: 1,
     pollutionGain: 5,
     sanityGain: -5,
     choices: [
@@ -859,6 +896,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [],
     onceOnly: true,
     priority: 4,
+    weight: 4,
+    dangerCategory: 'deadly',
+    minDangerLevel: 3,
     pollutionGain: 15,
     sanityGain: -20,
     choices: [
@@ -909,6 +949,8 @@ export const EVENTS: GameEvent[] = [
     conditions: [{ type: 'reputation_above', factionId: 'monastery', value: 25 }],
     onceOnly: true,
     priority: 5,
+    weight: 10,
+    dangerCategory: 'beneficial',
     choices: [
       {
         id: 'accept_gift',
@@ -959,6 +1001,9 @@ export const EVENTS: GameEvent[] = [
     conditions: [{ type: 'reputation_above', factionId: 'deep_ones', value: 25 }],
     onceOnly: true,
     priority: 5,
+    weight: 8,
+    dangerCategory: 'weird',
+    minDangerLevel: 2,
     choices: [
       {
         id: 'accept_gift',
@@ -1010,6 +1055,8 @@ export const EVENTS: GameEvent[] = [
     conditions: [{ type: 'reputation_above', factionId: 'watchers', value: 15 }],
     onceOnly: true,
     priority: 5,
+    weight: 9,
+    dangerCategory: 'neutral',
     choices: [
       {
         id: 'accept',

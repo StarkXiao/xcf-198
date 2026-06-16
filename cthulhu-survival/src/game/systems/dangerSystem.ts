@@ -1,7 +1,7 @@
 import type { MapTile, DayPhase, DangerInfo, LootQualityModifier, ActionCostModifier, EventWeightModifier } from '../types/game'
 import type { EventDangerCategory, GameEvent } from '../types/events'
 import type { LootTableEntry, LootResult } from '../types/items'
-import { clamp, weightedRandom, randomInt } from '../utils/random'
+import { clamp, weightedRandom, randomInt, chance } from '../utils/random'
 
 export function calculateDangerInfo(
   tile: MapTile,
@@ -251,4 +251,59 @@ export function calculateCombatCost(
 ): number {
   const costModifier = calculateActionCostModifier(dangerInfo)
   return Math.max(1, Math.ceil(baseCost * costModifier.combat))
+}
+
+export function scaleSuccessRate(baseRate: number, dangerInfo: DangerInfo): number {
+  const dangerValue = dangerInfo.value
+  const penalty = 1 - (dangerValue / 100) * 0.3
+  return clamp(baseRate * penalty, 0.05, 1.0)
+}
+
+export function scaleItemGainCount(baseCount: number, dangerInfo: DangerInfo): number {
+  const quality = calculateLootQualityModifier(dangerInfo)
+  return Math.max(1, Math.round(baseCount * quality.multiplier))
+}
+
+export function scaleStatChange(baseValue: number, dangerInfo: DangerInfo, statKind: string): number {
+  const dangerValue = dangerInfo.value
+  if (statKind === 'hp' || statKind === 'sanity' || statKind === 'energy') {
+    if (baseValue < 0) {
+      const amplify = 1 + (dangerValue / 100) * 0.5
+      return Math.round(baseValue * amplify)
+    }
+    const dampen = Math.max(0.3, 1 - (dangerValue / 100) * 0.4)
+    return Math.round(baseValue * dampen)
+  }
+  if (statKind === 'pollution') {
+    if (baseValue > 0) {
+      const amplify = 1 + (dangerValue / 100) * 0.6
+      return Math.round(baseValue * amplify)
+    }
+    const dampen = Math.max(0.4, 1 - (dangerValue / 100) * 0.3)
+    return Math.round(baseValue * dampen)
+  }
+  return baseValue
+}
+
+export function generateBonusLoot(
+  tileResources: string[],
+  dangerInfo: DangerInfo
+): { itemId: string; count: number }[] {
+  const results: { itemId: string; count: number }[] = []
+  if (tileResources.length === 0) return results
+
+  const dangerValue = dangerInfo.value
+  const bonusChance = dangerValue / 100 * 0.4
+  if (!chance(bonusChance)) return results
+
+  const quality = calculateLootQualityModifier(dangerInfo)
+  const pool = tileResources.filter(() => chance(0.6))
+  if (pool.length === 0) return results
+
+  for (const itemId of pool) {
+    const count = Math.max(1, Math.round(quality.multiplier))
+    results.push({ itemId, count })
+  }
+
+  return results
 }

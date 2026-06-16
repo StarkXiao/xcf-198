@@ -39,8 +39,10 @@ import {
   weightEventsByDanger,
   filterEventsByDanger,
   calculateLootQualityModifier,
+  generateBonusLoot,
 } from '../systems/dangerSystem'
 import type { LootQualityModifier } from '../types/game'
+import { addToInventory } from '../systems/craftSystem'
 import { clamp } from '../utils/random'
 
 export interface EngineState {
@@ -214,6 +216,15 @@ export class GameEngine {
       this.state.discoveredTiles.push(tile.id)
       this.discoverNearby(x, y)
       messages.push(`你发现了新的区域：${tile.name}`)
+
+      const exploreLoot = generateBonusLoot(tile.resources, dangerInfo)
+      if (exploreLoot.length > 0) {
+        for (const loot of exploreLoot) {
+          this.state.inventory = addToInventory(this.state.inventory, loot.itemId, loot.count)
+        }
+        const lootSummary = exploreLoot.map(l => `${l.itemId}x${l.count}`).join(', ')
+        messages.push(`探索收获：${lootSummary}（危险度加成 x${lootQualityModifier.multiplier.toFixed(1)}）`)
+      }
     }
 
     messages.push(`${dangerInfo.icon} ${dangerInfo.description}`)
@@ -292,7 +303,12 @@ export class GameEngine {
   }
 
   executeChoice(event: GameEvent, choiceId: string): EventResult | null {
-    const result = executeEventChoice(event, choiceId, this.state, this.identity)
+    const tile = this.getCurrentTile()
+    const dangerInfo = tile
+      ? calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution)
+      : null
+
+    const result = executeEventChoice(event, choiceId, this.state, this.identity, dangerInfo)
     if (!result) return null
 
     this.state.stats = result.consequences.stats
@@ -326,10 +342,30 @@ export class GameEngine {
     }
 
     if (event.pollutionGain) {
-      this.state.stats = applyPollutionEffect(this.state.stats, event.pollutionGain, this.identity)
+      let pGain = event.pollutionGain
+      if (dangerInfo) {
+        pGain = Math.round(pGain * dangerInfo.pollutionModifier)
+      }
+      this.state.stats = applyPollutionEffect(this.state.stats, pGain, this.identity)
     }
     if (event.sanityGain) {
-      this.state.stats.sanity = clamp(this.state.stats.sanity + event.sanityGain, 0, this.state.stats.maxSanity)
+      let sGain = event.sanityGain
+      if (dangerInfo) {
+        if (sGain < 0) {
+          sGain = Math.round(sGain * (1 + (dangerInfo.value / 100) * 0.5))
+        }
+      }
+      this.state.stats.sanity = clamp(this.state.stats.sanity + sGain, 0, this.state.stats.maxSanity)
+    }
+
+    if (result.success && tile && dangerInfo) {
+      const bonusItems = generateBonusLoot(tile.resources, dangerInfo)
+      if (bonusItems.length > 0) {
+        for (const bi of bonusItems) {
+          this.state.inventory = addToInventory(this.state.inventory, bi.itemId, bi.count)
+        }
+        result.messages.push(`在探索中发现了额外物资！+${bonusItems.map(b => `x${b.count}`).join(', ')}`)
+      }
     }
 
     this.state.currentEventId = null

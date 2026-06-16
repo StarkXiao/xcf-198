@@ -1,5 +1,5 @@
 import type { GameEvent, EventChoice, EventConsequence } from '../types/events'
-import type { PlayerStats, GameState } from '../types/game'
+import type { PlayerStats, GameState, DangerInfo } from '../types/game'
 import type { InventoryItem } from '../types/items'
 import type { Identity } from '../types/identity'
 import type { ReputationMap } from '../types/faction'
@@ -9,11 +9,13 @@ import { addToInventory, removeFromInventory, hasItem } from './craftSystem'
 import { modifyHp, modifySanity, modifyHunger, modifyEnergy, applyPollutionEffect } from './pollutionSystem'
 import { modifyReputation, checkReputationRequirement, checkReputationBelow } from './reputationSystem'
 import { getReputationChangeDescription } from '../data/factions'
+import { scaleSuccessRate, scaleItemGainCount, scaleStatChange } from './dangerSystem'
 
 export interface EventResult {
   event: GameEvent
   choiceId: string
   success: boolean
+  dangerInfo: DangerInfo | null
   consequences: {
     stats: PlayerStats
     inventory: InventoryItem[]
@@ -140,11 +142,21 @@ export function executeEventChoice(
   choiceId: string,
   state: GameState,
   identity: Identity,
+  dangerInfo: DangerInfo | null = null,
 ): EventResult | null {
   const choice = event.choices.find(c => c.id === choiceId)
   if (!choice) return null
 
-  const success = choice.successRate !== undefined ? chance(choice.successRate) : true
+  let success: boolean
+  if (choice.successRate !== undefined) {
+    const adjustedRate = dangerInfo
+      ? scaleSuccessRate(choice.successRate, dangerInfo)
+      : choice.successRate
+    success = chance(adjustedRate)
+  } else {
+    success = true
+  }
+
   const messages: string[] = []
 
   let stats = { ...state.stats }
@@ -160,7 +172,7 @@ export function executeEventChoice(
   const consequences = success ? choice.consequences : getFailureConsequences(choice)
 
   for (const cons of consequences) {
-    const result = applyConsequence(cons, stats, inventory, flags, reputation, identity)
+    const result = applyConsequence(cons, stats, inventory, flags, reputation, identity, dangerInfo)
     stats = result.stats
     inventory = result.inventory
     flags = result.flags
@@ -177,10 +189,23 @@ export function executeEventChoice(
     messages.unshift('行动失败了...')
   }
 
+  if (dangerInfo) {
+    const dangerValue = dangerInfo.value
+    if (dangerValue >= 55) {
+      const extraPollution = Math.round(dangerValue / 20)
+      stats = applyPollutionEffect(stats, extraPollution, identity)
+      messages.push(`危险环境侵蚀了你...污染 +${extraPollution}`)
+    }
+    if (dangerInfo.level === 'extreme' && success) {
+      messages.push('在极端危险中幸存，你从深渊边缘带回了一些额外收获。')
+    }
+  }
+
   return {
     event,
     choiceId,
     success,
+    dangerInfo,
     consequences: {
       stats,
       inventory,
@@ -211,6 +236,7 @@ function applyConsequence(
   flags: Record<string, boolean | number | string>,
   reputation: ReputationMap,
   identity: Identity,
+  dangerInfo: DangerInfo | null = null,
 ): {
   stats: PlayerStats
   inventory: InventoryItem[]
@@ -226,31 +252,64 @@ function applyConsequence(
   let result: any = { stats, inventory, flags, reputation }
 
   switch (cons.type) {
-    case 'gain_item':
+    case 'gain_item': {
       if (cons.itemId) {
-        result.inventory = addToInventory(inventory, cons.itemId, cons.count || 1)
+        let count = cons.count || 1
+        if (dangerInfo) {
+          count = scaleItemGainCount(count, dangerInfo)
+        }
+        result.inventory = addToInventory(inventory, cons.itemId, count)
+        if (dangerInfo && count > (cons.count || 1)) {
+          result.message = `危险区域的丰厚回报！获得 x${count}`
+        }
       }
       break
+    }
     case 'lose_item':
       if (cons.itemId) {
         result.inventory = removeFromInventory(inventory, cons.itemId, cons.count || 1)
       }
       break
-    case 'change_hp':
-      result.stats = modifyHp(stats, cons.value || 0, identity)
+    case 'change_hp': {
+      let value = cons.value || 0
+      if (dangerInfo) {
+        value = scaleStatChange(value, dangerInfo, 'hp')
+      }
+      result.stats = modifyHp(stats, value, identity)
       break
-    case 'change_sanity':
-      result.stats = modifySanity(stats, cons.value || 0)
+    }
+    case 'change_sanity': {
+      let value = cons.value || 0
+      if (dangerInfo) {
+        value = scaleStatChange(value, dangerInfo, 'sanity')
+      }
+      result.stats = modifySanity(stats, value)
       break
-    case 'change_pollution':
-      result.stats = applyPollutionEffect(stats, cons.value || 0, identity)
+    }
+    case 'change_pollution': {
+      let value = cons.value || 0
+      if (dangerInfo) {
+        value = scaleStatChange(value, dangerInfo, 'pollution')
+      }
+      result.stats = applyPollutionEffect(stats, value, identity)
       break
-    case 'change_hunger':
-      result.stats = modifyHunger(stats, cons.value || 0)
+    }
+    case 'change_hunger': {
+      let value = cons.value || 0
+      if (dangerInfo) {
+        value = scaleStatChange(value, dangerInfo, 'energy')
+      }
+      result.stats = modifyHunger(stats, value)
       break
-    case 'change_energy':
-      result.stats = modifyEnergy(stats, cons.value || 0)
+    }
+    case 'change_energy': {
+      let value = cons.value || 0
+      if (dangerInfo) {
+        value = scaleStatChange(value, dangerInfo, 'energy')
+      }
+      result.stats = modifyEnergy(stats, value)
       break
+    }
     case 'set_flag':
       if (cons.flagKey !== undefined) {
         result.flags = { ...flags, [cons.flagKey]: cons.flagValue ?? true }

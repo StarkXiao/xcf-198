@@ -1,13 +1,34 @@
-import type { InventoryItem } from '../types/items'
+import type { InventoryItem, Item } from '../types/items'
 import { ITEMS } from '../data/items'
-import { hasItem, removeFromInventory, addToInventory } from './craftSystem'
+import { hasItem, removeFromInventory } from './craftSystem'
+
+export interface ItemWithDurability extends Item {
+  maxDurability: number
+  durabilityCostPerUse?: number
+  repairMaterials?: { itemId: string; count: number }[]
+  repairAmount?: number
+}
+
+export interface InventoryItemWithDurability extends InventoryItem {
+  durability: number
+}
+
+export function isItemWithDurability(item: Item | undefined): item is ItemWithDurability {
+  return !!item && typeof item.maxDurability === 'number'
+}
+
+export function isInventoryItemWithDurability(
+  inv: InventoryItem,
+): inv is InventoryItemWithDurability {
+  return typeof inv.durability === 'number'
+}
 
 export function getItemDurabilityInfo(
   inventory: InventoryItem[],
   itemId: string,
 ): { current: number; max: number; ratio: number } | null {
   const itemData = ITEMS[itemId]
-  if (!itemData?.maxDurability) return null
+  if (!isItemWithDurability(itemData)) return null
 
   const inv = inventory.find(i => i.itemId === itemId)
   if (!inv) return null
@@ -39,7 +60,7 @@ export function applyDurabilityWear(
   cost?: number,
 ): InventoryItem[] {
   const itemData = ITEMS[itemId]
-  if (!itemData?.maxDurability) return inventory
+  if (!isItemWithDurability(itemData)) return inventory
 
   const wearCost = cost ?? itemData.durabilityCostPerUse ?? 1
   const idx = inventory.findIndex(i => i.itemId === itemId)
@@ -56,7 +77,7 @@ export function applyDurabilityWear(
 
 export function canRepair(inventory: InventoryItem[], itemId: string): { canRepair: boolean; reason?: string } {
   const itemData = ITEMS[itemId]
-  if (!itemData?.maxDurability) return { canRepair: false, reason: '该物品无需维修' }
+  if (!isItemWithDurability(itemData)) return { canRepair: false, reason: '该物品无需维修' }
 
   const info = getItemDurabilityInfo(inventory, itemId)
   if (!info) return { canRepair: false, reason: '物品不存在' }
@@ -83,8 +104,16 @@ export function repairItem(
     return { success: false, inventory, message: check.reason || '无法维修', repairedAmount: 0 }
   }
 
-  const itemData = ITEMS[itemId]!
-  const info = getItemDurabilityInfo(inventory, itemId)!
+  const itemData = ITEMS[itemId]
+  if (!isItemWithDurability(itemData)) {
+    return { success: false, inventory, message: '该物品无法维修', repairedAmount: 0 }
+  }
+
+  const info = getItemDurabilityInfo(inventory, itemId)
+  if (!info) {
+    return { success: false, inventory, message: '物品不存在', repairedAmount: 0 }
+  }
+
   let newInventory = [...inventory]
 
   if (itemData.repairMaterials) {
@@ -114,8 +143,8 @@ export function repairItem(
 export function initializeDurability(inventory: InventoryItem[]): InventoryItem[] {
   return inventory.map(inv => {
     const itemData = ITEMS[inv.itemId]
-    if (!itemData?.maxDurability) return inv
-    if (inv.durability !== undefined) return inv
+    if (!isItemWithDurability(itemData)) return inv
+    if (isInventoryItemWithDurability(inv)) return inv
     return { ...inv, durability: itemData.maxDurability }
   })
 }

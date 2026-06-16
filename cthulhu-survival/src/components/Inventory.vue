@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useGameStore } from '@stores/gameStore'
 import { storeToRefs } from 'pinia'
 import { ITEMS } from '@game/data/items'
-import { getDurabilityColor, getDurabilityStatusText } from '@game/systems/durabilitySystem'
+import { getDurabilityColor } from '@game/systems/durabilitySystem'
 
 const gameStore = useGameStore()
 const { inventory } = storeToRefs(gameStore)

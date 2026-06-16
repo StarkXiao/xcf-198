@@ -5,7 +5,7 @@ import { chance } from '../utils/random'
 import type { PlayerStats } from '../types/game'
 import type { Identity } from '../types/identity'
 import { checkReputationRequirement } from './reputationSystem'
-import { isItemBroken, applyDurabilityWear, initializeDurability } from './durabilitySystem'
+import { isItemBroken, applyDurabilityWear, initializeDurability, isItemWithDurability } from './durabilitySystem'
 import { ITEMS } from '../data/items'
 
 export function getAvailableRecipes(
@@ -110,7 +110,7 @@ export function craftItem(
       }
     } else {
       const newItem: InventoryItem = { itemId: recipe.result.itemId, count: recipe.result.count }
-      if (resultItemData?.maxDurability) {
+      if (isItemWithDurability(resultItemData)) {
         newItem.durability = resultItemData.maxDurability
       }
       newInventory.push(newItem)
@@ -148,7 +148,7 @@ export function addToInventory(inventory: InventoryItem[], itemId: string, count
     )
   }
   const newItem: InventoryItem = { itemId, count }
-  if (itemData?.maxDurability) {
+  if (isItemWithDurability(itemData)) {
     newItem.durability = itemData.maxDurability
   }
   return [...inventory, newItem]

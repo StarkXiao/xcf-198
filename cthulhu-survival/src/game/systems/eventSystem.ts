@@ -10,7 +10,7 @@ import { modifyHp, modifySanity, modifyHunger, modifyEnergy, applyPollutionEffec
 import { modifyReputation, checkReputationRequirement, checkReputationBelow } from './reputationSystem'
 import { getReputationChangeDescription } from '../data/factions'
 import { scaleSuccessRate, scaleItemGainCount, scaleStatChange } from './dangerSystem'
-import { isItemBroken, getDurabilityModifier, applyDurabilityWear } from './durabilitySystem'
+import { isItemBroken, getDurabilityModifier, applyDurabilityWear, isItemWithDurability } from './durabilitySystem'
 import { ITEMS } from '../data/items'
 
 export interface EventResult {
@@ -162,7 +162,7 @@ export function executeEventChoice(
       for (const req of choice.requirements) {
         if (req.type === 'has_item' && req.itemId) {
           const itemData = ITEMS[req.itemId]
-          if (itemData?.maxDurability) {
+          if (isItemWithDurability(itemData)) {
             const durMod = getDurabilityModifier(state.inventory, req.itemId)
             adjustedRate *= durMod
           }
@@ -207,7 +207,7 @@ export function executeEventChoice(
     for (const req of choice.requirements) {
       if (req.type === 'has_item' && req.itemId) {
         const itemData = ITEMS[req.itemId]
-        if (itemData?.maxDurability) {
+        if (isItemWithDurability(itemData)) {
           inventory = applyDurabilityWear(inventory, req.itemId)
           const durInfo = inventory.find(i => i.itemId === req.itemId)
           if (durInfo && durInfo.durability !== undefined && durInfo.durability <= 0) {

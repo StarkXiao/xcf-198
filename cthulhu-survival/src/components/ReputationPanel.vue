@@ -2,9 +2,7 @@
 import { computed } from 'vue'
 import { useGameStore } from '@stores/gameStore'
 import { storeToRefs } from 'pinia'
-import { FACTIONS } from '@game/data/factions'
-import { getReputationLevel } from '@game/data/factions'
-import type { FactionId } from '@game/types/faction'
+import { FACTIONS, getReputationLevel } from '@game/data/factions'
 
 const gameStore = useGameStore()
 const { state } = storeToRefs(gameStore)

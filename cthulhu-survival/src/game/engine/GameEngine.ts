@@ -2,7 +2,6 @@ import type { GameState, MapTile, Position } from '../types/game'
 import type { Identity } from '../types/identity'
 import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { GameEvent, Ending } from '../types/events'
-import type { ReputationMap } from '../types/faction'
 import { MAP_TILES, getTileAt } from '../data/events'
 import { ITEMS } from '../data/items'
 import {
@@ -202,7 +201,12 @@ export class GameEngine {
     }
 
     const events = findTriggeredEvents(this.state, tile.type, tile.id)
-    const triggerableEvents = events.filter(e => tile.hasEvent && tile.eventId === e.id)
+    const triggerableEvents = events.filter(e => {
+      if (e.trigger.type === 'tile_enter' && e.trigger.tileId) {
+        return tile.hasEvent && tile.eventId === e.id
+      }
+      return true
+    })
 
     const ending = checkForImmediateEnding(this.state)
     if (ending) {

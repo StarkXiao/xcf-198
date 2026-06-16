@@ -39,11 +39,28 @@ export function shouldTriggerEvent(
   }
 
   for (const cond of event.conditions) {
-    if (cond.type === 'reputation_above' && cond.factionId) {
-      if (!checkReputationRequirement(state.reputation, cond.factionId, cond.value || 0)) return false
-    }
-    if (cond.type === 'reputation_below' && cond.factionId) {
-      if (!checkReputationBelow(state.reputation, cond.factionId, cond.value || 0)) return false
+    switch (cond.type) {
+      case 'reputation_above':
+        if (cond.factionId && !checkReputationRequirement(state.reputation, cond.factionId, cond.value || 0)) return false
+        break
+      case 'reputation_below':
+        if (cond.factionId && !checkReputationBelow(state.reputation, cond.factionId, cond.value || 0)) return false
+        break
+      case 'has_item':
+        if (!cond.itemId || !hasItem(state.inventory, cond.itemId, 1)) return false
+        break
+      case 'has_flag':
+        if (state.flags[cond.flagKey || ''] !== cond.flagValue) return false
+        break
+      case 'pollution_above':
+        if (state.stats.pollution < (cond.value || 0)) return false
+        break
+      case 'sanity_below':
+        if (state.stats.sanity > (cond.value || 100)) return false
+        break
+      case 'day_above':
+        if (state.time.day < (cond.value || 0)) return false
+        break
     }
   }
 

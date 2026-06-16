@@ -3,12 +3,27 @@ import { computed } from 'vue'
 import { useGameStore } from '@stores/gameStore'
 import { storeToRefs } from 'pinia'
 import { ITEMS } from '@game/data/items'
+import { FACTIONS } from '@game/data/factions'
 import type { CraftRecipe } from '@game/types/items'
 
 const gameStore = useGameStore()
-const { inventory } = storeToRefs(gameStore)
+const { inventory, reputation } = storeToRefs(gameStore)
 
 const recipes = computed(() => gameStore.getCraftableRecipes())
+
+function factionName(id: string): string {
+  return FACTIONS.find(f => f.id === id)?.name || id
+}
+
+function factionIcon(id: string): string {
+  return FACTIONS.find(f => f.id === id)?.icon || '❓'
+}
+
+function reputationOk(r: CraftRecipe): boolean {
+  if (!r.requiredReputation) return true
+  const rep = reputation.value[r.requiredReputation.factionId] || 0
+  return rep >= r.requiredReputation.minReputation
+}
 
 function hasIngredient(itemId: string, count: number): boolean {
   const item = inventory.value.find(i => i.itemId === itemId)
@@ -62,6 +77,12 @@ function craft(r: CraftRecipe) {
           <span v-if="r.energyCost" :class="inventory.length > 0 ? 'ok' : ''">⚡ {{ r.energyCost }}</span>
           <span v-if="r.sanityCost < 0">🧠 {{ r.sanityCost }}</span>
           <span v-if="r.pollutionCost > 0">☠️ +{{ r.pollutionCost }}</span>
+        </div>
+
+        <div v-if="r.requiredReputation" class="reputation-req" :class="{ ok: reputationOk(r) }">
+          <span>{{ factionIcon(r.requiredReputation.factionId) }}</span>
+          <span>需要{{ factionName(r.requiredReputation.factionId) }}声望 ≥ {{ r.requiredReputation.minReputation }}</span>
+          <span class="current-rep">(当前: {{ reputation[r.requiredReputation.factionId] || 0 }})</span>
         </div>
 
         <button
@@ -176,6 +197,30 @@ function craft(r: CraftRecipe) {
   font-size: 11px;
   margin-bottom: 10px;
   color: var(--color-text-secondary);
+}
+
+.reputation-req {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  margin-bottom: 10px;
+  padding: 4px 8px;
+  background: rgba(196, 74, 74, 0.08);
+  border: 1px solid rgba(196, 74, 74, 0.25);
+  border-radius: 4px;
+  color: var(--color-danger);
+}
+
+.reputation-req.ok {
+  background: rgba(94, 201, 138, 0.08);
+  border-color: rgba(94, 201, 138, 0.25);
+  color: var(--color-cthulhu-green-glow);
+}
+
+.current-rep {
+  margin-left: auto;
+  color: var(--color-text-muted);
 }
 
 .craft-btn {

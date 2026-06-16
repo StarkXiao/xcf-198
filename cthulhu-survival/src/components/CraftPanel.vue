@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { ITEMS } from '@game/data/items'
 import { FACTIONS } from '@game/data/factions'
 import type { CraftRecipe } from '@game/types/items'
+import { getItemDurabilityInfo, getDurabilityColor } from '@game/systems/durabilitySystem'
 
 const gameStore = useGameStore()
 const { inventory, reputation } = storeToRefs(gameStore)
@@ -28,6 +29,18 @@ function reputationOk(r: CraftRecipe): boolean {
 function hasIngredient(itemId: string, count: number): boolean {
   const item = inventory.value.find(i => i.itemId === itemId)
   return !!item && item.count >= count
+}
+
+function toolDurabilityText(toolId: string): string {
+  const info = getItemDurabilityInfo(inventory.value, toolId)
+  if (!info) return ''
+  return `${info.current}/${info.max}`
+}
+
+function toolDurabilityRatio(toolId: string): number {
+  const info = getItemDurabilityInfo(inventory.value, toolId)
+  if (!info) return 1
+  return info.ratio
 }
 
 function canCraft(r: CraftRecipe) {
@@ -68,8 +81,13 @@ function craft(r: CraftRecipe) {
           >
             {{ ITEMS[ing.itemId]?.icon }} {{ ITEMS[ing.itemId]?.name }} x{{ ing.count }}
           </span>
-          <span v-if="r.requiredTool" class="ing-chip" :class="{ ok: hasIngredient(r.requiredTool, 1) }">
+          <span v-if="r.requiredTool" class="ing-chip tool-chip" :class="{ ok: hasIngredient(r.requiredTool, 1) }">
             🔧 {{ ITEMS[r.requiredTool]?.name }}
+            <span
+              v-if="ITEMS[r.requiredTool]?.maxDurability"
+              class="tool-durability"
+              :style="{ color: getDurabilityColor(toolDurabilityRatio(r.requiredTool)) }"
+            >{{ toolDurabilityText(r.requiredTool) }}</span>
           </span>
         </div>
 
@@ -189,6 +207,17 @@ function craft(r: CraftRecipe) {
 
 .ing-chip.ok {
   color: var(--color-cthulhu-green-glow);
+}
+
+.tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tool-durability {
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .cost {

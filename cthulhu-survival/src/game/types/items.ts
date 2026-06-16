@@ -22,6 +22,10 @@ export interface Item {
   discardable: boolean
   minDangerForDrop?: number
   maxDangerForDrop?: number
+  maxDurability?: number
+  durabilityCostPerUse?: number
+  repairMaterials?: { itemId: string; count: number }[]
+  repairAmount?: number
 }
 
 export interface LootTableEntry {
@@ -50,6 +54,7 @@ export interface ItemEffect {
 export interface InventoryItem {
   itemId: string
   count: number
+  durability?: number
 }
 
 export interface CraftRecipe {

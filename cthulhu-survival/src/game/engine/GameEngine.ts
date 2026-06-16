@@ -21,6 +21,7 @@ import {
   canCraft,
   craftItem,
   removeFromInventory,
+  addToInventory,
 } from '../systems/craftSystem'
 import {
   findTriggeredEvents,
@@ -42,8 +43,8 @@ import {
   generateBonusLoot,
 } from '../systems/dangerSystem'
 import type { LootQualityModifier } from '../types/game'
-import { addToInventory } from '../systems/craftSystem'
 import { clamp } from '../utils/random'
+import { repairItem as repairItemSystem, canRepair, initializeDurability } from '../systems/durabilitySystem'
 
 export interface EngineState {
   state: GameState
@@ -76,11 +77,12 @@ export class GameEngine {
   static fromSerialized(data: SerializedSave): GameEngine {
     const identity = data.identity
     const engine = new GameEngine(identity)
+    const rawInventory = Array.isArray(data.state.inventory) && data.state.inventory.length > 0
+      ? data.state.inventory
+      : (data.inventory || [])
     engine.state = {
       ...data.state,
-      inventory: Array.isArray(data.state.inventory) && data.state.inventory.length > 0
-        ? data.state.inventory
-        : (data.inventory || []),
+      inventory: initializeDurability(rawInventory),
       reputation: data.state.reputation || createDefaultReputation(),
     }
     engine.identity = data.identity
@@ -88,7 +90,7 @@ export class GameEngine {
   }
 
   private createInitialState(identity: Identity): GameState {
-    const inventory = itemIdsToInventory([...identity.startInventory])
+    const inventory = initializeDurability(itemIdsToInventory([...identity.startInventory]))
     return {
       status: 'playing',
       time: createInitialTime(identity),
@@ -456,6 +458,18 @@ export class GameEngine {
     this.state.stats.hunger = clamp(this.state.stats.hunger - 15, 0, 100)
 
     return { success: true, messages: ['你在营地休息了一会儿，恢复了精力。'] }
+  }
+
+  canRepairItem(itemId: string): { canRepair: boolean; reason?: string } {
+    return canRepair(this.state.inventory, itemId)
+  }
+
+  repairItem(itemId: string): { success: boolean; message: string } {
+    const result = repairItemSystem(this.state.inventory, itemId)
+    if (result.success) {
+      this.updateInventory(result.inventory)
+    }
+    return { success: result.success, message: result.message }
   }
 
   checkEndings(): Ending[] {

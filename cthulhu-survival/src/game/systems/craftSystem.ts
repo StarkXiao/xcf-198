@@ -5,6 +5,8 @@ import { chance } from '../utils/random'
 import type { PlayerStats } from '../types/game'
 import type { Identity } from '../types/identity'
 import { checkReputationRequirement } from './reputationSystem'
+import { isItemBroken, applyDurabilityWear, initializeDurability } from './durabilitySystem'
+import { ITEMS } from '../data/items'
 
 export function getAvailableRecipes(
   _inventory: InventoryItem[],
@@ -41,6 +43,9 @@ export function canCraft(
     const tool = inventory.find(i => i.itemId === recipe.requiredTool && i.count > 0)
     if (!tool) {
       return { canCraft: false, reason: '缺少必需工具' }
+    }
+    if (isItemBroken(inventory, recipe.requiredTool)) {
+      return { canCraft: false, reason: '工具已损坏，需要维修' }
     }
   }
 
@@ -97,14 +102,24 @@ export function craftItem(
 
   if (success) {
     const existingIdx = newInventory.findIndex(i => i.itemId === recipe.result.itemId)
+    const resultItemData = ITEMS[recipe.result.itemId]
     if (existingIdx !== -1) {
       newInventory[existingIdx] = {
         ...newInventory[existingIdx],
         count: newInventory[existingIdx].count + recipe.result.count,
       }
     } else {
-      newInventory.push({ itemId: recipe.result.itemId, count: recipe.result.count })
+      const newItem: InventoryItem = { itemId: recipe.result.itemId, count: recipe.result.count }
+      if (resultItemData?.maxDurability) {
+        newItem.durability = resultItemData.maxDurability
+      }
+      newInventory.push(newItem)
     }
+
+    if (recipe.requiredTool) {
+      newInventory = applyDurabilityWear(newInventory, recipe.requiredTool)
+    }
+
     return {
       success: true,
       inventory: newInventory,
@@ -112,6 +127,9 @@ export function craftItem(
       message: `合成成功！获得 ${recipe.name} x${recipe.result.count}`,
     }
   } else {
+    if (recipe.requiredTool) {
+      newInventory = applyDurabilityWear(newInventory, recipe.requiredTool)
+    }
     return {
       success: false,
       inventory: newInventory,
@@ -123,12 +141,17 @@ export function craftItem(
 
 export function addToInventory(inventory: InventoryItem[], itemId: string, count: number = 1): InventoryItem[] {
   const idx = inventory.findIndex(i => i.itemId === itemId)
+  const itemData = ITEMS[itemId]
   if (idx !== -1) {
     return inventory.map((item, i) =>
       i === idx ? { ...item, count: item.count + count } : item,
     )
   }
-  return [...inventory, { itemId, count }]
+  const newItem: InventoryItem = { itemId, count }
+  if (itemData?.maxDurability) {
+    newItem.durability = itemData.maxDurability
+  }
+  return [...inventory, newItem]
 }
 
 export function removeFromInventory(inventory: InventoryItem[], itemId: string, count: number = 1): InventoryItem[] {
@@ -163,5 +186,7 @@ export function itemIdsToInventory(itemIds: string[]): InventoryItem[] {
   for (const id of itemIds) {
     map.set(id, (map.get(id) || 0) + 1)
   }
-  return Array.from(map.entries()).map(([itemId, count]) => ({ itemId, count }))
+  return initializeDurability(
+    Array.from(map.entries()).map(([itemId, count]) => ({ itemId, count })),
+  )
 }

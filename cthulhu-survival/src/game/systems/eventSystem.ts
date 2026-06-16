@@ -10,6 +10,8 @@ import { modifyHp, modifySanity, modifyHunger, modifyEnergy, applyPollutionEffec
 import { modifyReputation, checkReputationRequirement, checkReputationBelow } from './reputationSystem'
 import { getReputationChangeDescription } from '../data/factions'
 import { scaleSuccessRate, scaleItemGainCount, scaleStatChange } from './dangerSystem'
+import { isItemBroken, getDurabilityModifier, applyDurabilityWear } from './durabilitySystem'
+import { ITEMS } from '../data/items'
 
 export interface EventResult {
   event: GameEvent
@@ -111,6 +113,9 @@ export function checkChoiceRequirements(
         if (!req.itemId || !hasItem(inventory, req.itemId, 1)) {
           return { available: false, reason: `缺少物品` }
         }
+        if (isItemBroken(inventory, req.itemId)) {
+          return { available: false, reason: `装备已损坏，需要维修` }
+        }
         break
       case 'min_sanity':
         if (stats.sanity < (req.value || 0)) {
@@ -149,9 +154,22 @@ export function executeEventChoice(
 
   let success: boolean
   if (choice.successRate !== undefined) {
-    const adjustedRate = dangerInfo
+    let adjustedRate = dangerInfo
       ? scaleSuccessRate(choice.successRate, dangerInfo)
       : choice.successRate
+
+    if (choice.requirements) {
+      for (const req of choice.requirements) {
+        if (req.type === 'has_item' && req.itemId) {
+          const itemData = ITEMS[req.itemId]
+          if (itemData?.maxDurability) {
+            const durMod = getDurabilityModifier(state.inventory, req.itemId)
+            adjustedRate *= durMod
+          }
+        }
+      }
+    }
+
     success = chance(adjustedRate)
   } else {
     success = true
@@ -183,6 +201,21 @@ export function executeEventChoice(
     if (result.unlockedRecipe) unlockedRecipes.push(result.unlockedRecipe)
     if (result.revealedTile) revealedTiles.push(result.revealedTile)
     if (result.actionPointDelta !== undefined) actionPointDelta += result.actionPointDelta
+  }
+
+  if (choice.requirements) {
+    for (const req of choice.requirements) {
+      if (req.type === 'has_item' && req.itemId) {
+        const itemData = ITEMS[req.itemId]
+        if (itemData?.maxDurability) {
+          inventory = applyDurabilityWear(inventory, req.itemId)
+          const durInfo = inventory.find(i => i.itemId === req.itemId)
+          if (durInfo && durInfo.durability !== undefined && durInfo.durability <= 0) {
+            messages.push(`${itemData.name}已损坏！需要维修才能继续使用。`)
+          }
+        }
+      }
+    }
   }
 
   if (!success) {

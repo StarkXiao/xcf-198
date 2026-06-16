@@ -128,6 +128,19 @@ export const useGameStore = defineStore('game', () => {
     return result
   }
 
+  function canRepairItem(itemId: string) {
+    if (!engine.value) return { canRepair: false }
+    return engine.value.canRepairItem(itemId)
+  }
+
+  function repairItem(itemId: string) {
+    if (!engine.value) return { success: false, message: '错误' }
+    const result = engine.value.repairItem(itemId)
+    syncFromEngine()
+    messages.value.push(result.message)
+    return result
+  }
+
   function checkChoiceAvail(choiceId: string) {
     if (!engine.value || !currentEvent.value) return { available: false }
     return engine.value.checkChoiceAvail(currentEvent.value, choiceId)
@@ -208,6 +221,8 @@ export const useGameStore = defineStore('game', () => {
     craft,
     useItem,
     rest,
+    canRepairItem,
+    repairItem,
     checkChoiceAvail,
     checkEndings,
     triggerEnding,

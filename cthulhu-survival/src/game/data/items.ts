@@ -23,6 +23,10 @@ export const ITEMS: Record<string, Item> = {
     stackable: false,
     maxStack: 1,
     discardable: true,
+    maxDurability: 50,
+    durabilityCostPerUse: 5,
+    repairMaterials: [{ itemId: 'dried_herb', count: 1 }],
+    repairAmount: 15,
   },
   dried_herb: {
     id: 'dried_herb',
@@ -45,6 +49,10 @@ export const ITEMS: Record<string, Item> = {
     stackable: false,
     maxStack: 1,
     discardable: true,
+    maxDurability: 60,
+    durabilityCostPerUse: 3,
+    repairMaterials: [{ itemId: 'flint', count: 1 }],
+    repairAmount: 20,
   },
   revolver: {
     id: 'revolver',
@@ -56,6 +64,10 @@ export const ITEMS: Record<string, Item> = {
     stackable: false,
     maxStack: 1,
     discardable: true,
+    maxDurability: 80,
+    durabilityCostPerUse: 8,
+    repairMaterials: [{ itemId: 'flint', count: 2 }, { itemId: 'wood', count: 1 }],
+    repairAmount: 25,
   },
   bullet: {
     id: 'bullet',
@@ -91,6 +103,10 @@ export const ITEMS: Record<string, Item> = {
     sanityOnUse: 15,
     energyOnUse: -10,
     discardable: true,
+    maxDurability: 40,
+    durabilityCostPerUse: 4,
+    repairMaterials: [{ itemId: 'dried_herb', count: 2 }],
+    repairAmount: 12,
   },
   holy_water: {
     id: 'holy_water',
@@ -127,6 +143,10 @@ export const ITEMS: Record<string, Item> = {
     stackable: false,
     maxStack: 1,
     discardable: true,
+    maxDurability: 60,
+    durabilityCostPerUse: 6,
+    repairMaterials: [{ itemId: 'flint', count: 1 }, { itemId: 'wood', count: 1 }],
+    repairAmount: 20,
   },
   bow: {
     id: 'bow',
@@ -138,6 +158,10 @@ export const ITEMS: Record<string, Item> = {
     stackable: false,
     maxStack: 1,
     discardable: true,
+    maxDurability: 50,
+    durabilityCostPerUse: 5,
+    repairMaterials: [{ itemId: 'wood', count: 2 }],
+    repairAmount: 18,
   },
   arrow: {
     id: 'arrow',
@@ -160,6 +184,8 @@ export const ITEMS: Record<string, Item> = {
     stackable: true,
     maxStack: 5,
     discardable: true,
+    maxDurability: 40,
+    durabilityCostPerUse: 8,
   },
   strange_stone: {
     id: 'strange_stone',
@@ -256,6 +282,8 @@ export const ITEMS: Record<string, Item> = {
     stackable: true,
     maxStack: 5,
     discardable: true,
+    maxDurability: 30,
+    durabilityCostPerUse: 10,
   },
   wood: {
     id: 'wood',

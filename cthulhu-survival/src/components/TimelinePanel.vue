@@ -218,6 +218,22 @@ function getSnapshotTypeLabel(type: 'auto' | 'manual'): string {
               </div>
             </div>
 
+            <div class="record-section">
+              <h3>🏅 成就</h3>
+              <div v-if="permanentRecords.completedAchievements.length === 0" class="record-empty">
+                尚未获得成就
+              </div>
+              <div v-else class="achievement-list">
+                <div v-for="achievement in permanentRecords.completedAchievements" :key="achievement.id" class="achievement-item">
+                  <span class="achievement-icon">{{ achievement.icon }}</span>
+                  <div class="achievement-info">
+                    <span class="achievement-name">{{ achievement.name }}</span>
+                    <span class="achievement-desc">{{ achievement.description }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="record-note">
               💡 以上记录会永久保留，即使回退时间线也不会丢失。
             </div>
@@ -602,6 +618,47 @@ function getSnapshotTypeLabel(type: 'auto' | 'manual'): string {
   font-size: 12px;
   color: var(--color-text-secondary);
   text-align: center;
+}
+
+.achievement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.achievement-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(241, 196, 15, 0.08);
+  border: 1px solid rgba(241, 196, 15, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.achievement-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.achievement-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.achievement-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.achievement-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
 }
 
 .empty-state {

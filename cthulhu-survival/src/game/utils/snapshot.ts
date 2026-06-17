@@ -1,4 +1,5 @@
 import type { ChapterSnapshot, PermanentUnlocks, SnapshotTimeline } from '../types/snapshot'
+import type { GrowthAchievement } from '../types/growthTree'
 import type { SerializedSave } from '../engine/GameEngine'
 
 const SNAPSHOT_KEY = 'cthulhu_survival_snapshots'
@@ -79,6 +80,8 @@ export function createSnapshotFromSave(
     eventDescription: string
     choiceMade?: { choiceId: string; choiceText: string; success: boolean } | null
     snapshotType?: 'auto' | 'manual'
+    isPreEventSnapshot?: boolean
+    parentSnapshotId?: string | null
     description?: string
   },
 ): ChapterSnapshot {
@@ -96,6 +99,8 @@ export function createSnapshotFromSave(
     inventory: JSON.parse(JSON.stringify(save.inventory)),
     growthProgress: JSON.parse(JSON.stringify(save.growthProgress)),
     snapshotType: eventData.snapshotType || 'auto',
+    isPreEventSnapshot: eventData.isPreEventSnapshot || false,
+    parentSnapshotId: eventData.parentSnapshotId || null,
     description: eventData.description,
   }
 }
@@ -144,12 +149,22 @@ export function savePermanentUnlocks(unlocks: PermanentUnlocks): void {
 
 export function mergePermanentUnlocks(newUnlocks: Partial<PermanentUnlocks>): PermanentUnlocks {
   const current = getPermanentUnlocks()
+
+  const mergedAchievements: GrowthAchievement[] = [...current.completedAchievements]
+  const existingAchievementIds = new Set(current.completedAchievements.map(a => a.id))
+  ;(newUnlocks.completedAchievements || []).forEach(a => {
+    if (!existingAchievementIds.has(a.id)) {
+      mergedAchievements.push(a)
+      existingAchievementIds.add(a.id)
+    }
+  })
+
   const merged: PermanentUnlocks = {
     unlockedEndings: [...new Set([...current.unlockedEndings, ...(newUnlocks.unlockedEndings || [])])],
     discoveredTiles: [...new Set([...current.discoveredTiles, ...(newUnlocks.discoveredTiles || [])])],
     triggeredEvents: [...new Set([...current.triggeredEvents, ...(newUnlocks.triggeredEvents || [])])],
     unlockedRecipes: [...new Set([...current.unlockedRecipes, ...(newUnlocks.unlockedRecipes || [])])],
-    completedAchievements: [...new Set([...current.completedAchievements, ...(newUnlocks.completedAchievements || [])])],
+    completedAchievements: mergedAchievements,
   }
   savePermanentUnlocks(merged)
   return merged
@@ -159,14 +174,39 @@ export function rewindToSnapshot(snapshotId: string): { save: SerializedSave; pe
   const snapshot = getSnapshot(snapshotId)
   if (!snapshot) return null
 
+  const timeline = getTimeline()
+  const snapshotIndex = timeline.snapshots.findIndex(s => s.id === snapshotId)
+
+  let subsequentEvents: string[] = []
+  if (snapshotIndex !== -1) {
+    for (let i = snapshotIndex + 1; i < timeline.snapshots.length; i++) {
+      const snap = timeline.snapshots[i]
+      if (snap.eventId && snap.eventId !== 'manual_save') {
+        subsequentEvents.push(snap.eventId)
+      }
+    }
+    timeline.snapshots = timeline.snapshots.slice(0, snapshotIndex + 1)
+  }
+
   const permanentUnlocks = getPermanentUnlocks()
   const save = snapshotToSave(snapshot)
 
   save.state.unlockedEndings = [...new Set([...save.state.unlockedEndings, ...permanentUnlocks.unlockedEndings])]
   save.state.discoveredTiles = [...new Set([...save.state.discoveredTiles, ...permanentUnlocks.discoveredTiles])]
-  save.state.triggeredEvents = [...new Set([...save.state.triggeredEvents, ...permanentUnlocks.triggeredEvents])]
 
-  setCurrentSnapshot(snapshotId)
+  const excludeEvents = new Set(subsequentEvents)
+  if (snapshot.isPreEventSnapshot && snapshot.eventId && snapshot.eventId !== 'manual_save') {
+    excludeEvents.add(snapshot.eventId)
+  }
+  save.state.triggeredEvents = save.state.triggeredEvents.filter(e => !excludeEvents.has(e))
+  permanentUnlocks.triggeredEvents.forEach(e => {
+    if (!save.state.triggeredEvents.includes(e)) {
+      save.state.triggeredEvents.push(e)
+    }
+  })
+
+  timeline.currentSnapshotId = snapshotId
+  saveTimeline(timeline)
 
   return { save, permanentUnlocks }
 }

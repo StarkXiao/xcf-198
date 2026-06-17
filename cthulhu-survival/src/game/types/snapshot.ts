@@ -1,7 +1,7 @@
 import type { GameState } from './game'
 import type { Identity } from './identity'
 import type { InventoryItem } from './items'
-import type { GrowthTreeProgress } from './growthTree'
+import type { GrowthTreeProgress, GrowthAchievement } from './growthTree'
 
 export interface ChoiceRecord {
   choiceId: string
@@ -23,6 +23,8 @@ export interface ChapterSnapshot {
   inventory: InventoryItem[]
   growthProgress: GrowthTreeProgress
   snapshotType: 'auto' | 'manual'
+  isPreEventSnapshot: boolean
+  parentSnapshotId: string | null
   description?: string
 }
 
@@ -36,5 +38,5 @@ export interface PermanentUnlocks {
   discoveredTiles: string[]
   triggeredEvents: string[]
   unlockedRecipes: string[]
-  completedAchievements: string[]
+  completedAchievements: GrowthAchievement[]
 }

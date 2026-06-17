@@ -57,7 +57,7 @@ import {
 import type { LootQualityModifier } from '../types/game'
 import { clamp } from '../utils/random'
 import { repairItem as repairItemSystem, canRepair, initializeDurability } from '../systems/durabilitySystem'
-import { createSnapshotFromSave, addSnapshot, mergePermanentUnlocks } from '../utils/snapshot'
+import { createSnapshotFromSave, addSnapshot, mergePermanentUnlocks, getTimeline, saveTimeline } from '../utils/snapshot'
 
 export interface EngineState {
   state: GameState
@@ -323,6 +323,9 @@ export class GameEngine {
   }
 
   triggerEvent(event: GameEvent): void {
+    if (this.isKeyDecisionEvent(event) && !this.state.triggeredEvents.includes(event.id)) {
+      this.createPreEventSnapshot(event)
+    }
     this.state.currentEventId = event.id
     this.state.status = 'event'
   }
@@ -405,9 +408,10 @@ export class GameEngine {
     if (this.isKeyDecisionEvent(event)) {
       const choice = event.choices.find(c => c.id === choiceId)
       if (choice) {
-        this.createChapterSnapshot(event, { choice, success: result.success })
+        this.updateLastPreEventSnapshot(event, { choice, success: result.success })
       }
     }
+    this.updatePermanentUnlocks()
 
     return result
   }
@@ -584,6 +588,41 @@ export class GameEngine {
     }
   }
 
+  createPreEventSnapshot(event: GameEvent): void {
+    const save = this.serialize()
+    const snapshot = createSnapshotFromSave(save, {
+      eventId: event.id,
+      eventTitle: event.title,
+      eventDescription: event.description,
+      choiceMade: null,
+      snapshotType: 'auto',
+      isPreEventSnapshot: true,
+      parentSnapshotId: null,
+    })
+    addSnapshot(snapshot)
+  }
+
+  updateLastPreEventSnapshot(
+    event: GameEvent,
+    choiceMade: { choice: EventChoice; success: boolean },
+  ): void {
+    const timeline = getTimeline()
+    const lastPreEventIndex = [...timeline.snapshots].reverse().findIndex(
+      s => s.isPreEventSnapshot && s.eventId === event.id && s.choiceMade === null,
+    )
+    if (lastPreEventIndex !== -1) {
+      const actualIndex = timeline.snapshots.length - 1 - lastPreEventIndex
+      const snap = timeline.snapshots[actualIndex]
+      snap.choiceMade = {
+        choiceId: choiceMade.choice.id,
+        choiceText: choiceMade.choice.text,
+        success: choiceMade.success,
+      }
+      snap.isPreEventSnapshot = false
+      saveTimeline(timeline)
+    }
+  }
+
   createChapterSnapshot(
     event: GameEvent,
     choiceMade?: { choice: EventChoice; success: boolean } | null,
@@ -602,17 +641,36 @@ export class GameEngine {
           }
         : null,
       snapshotType: 'auto',
+      isPreEventSnapshot: false,
       description,
     })
     addSnapshot(snapshot)
-    this.updatePermanentUnlocks()
   }
 
   updatePermanentUnlocks(): void {
+    const progress = this.getGrowthProgress()
+    const unlockedRecipes: string[] = []
+    const flags = this.state.flags
+    Object.keys(flags).forEach(key => {
+      if (key.startsWith('unlock_recipe_') && flags[key]) {
+        unlockedRecipes.push(key.replace('unlock_recipe_', ''))
+      }
+      if (key.startsWith('unlock_') && flags[key] && key !== 'unlock_alchemy' && key !== 'unlock_ritual') {
+        const recipeId = key.replace('unlock_', '')
+        if (!unlockedRecipes.includes(recipeId)) {
+          unlockedRecipes.push(recipeId)
+        }
+      }
+    })
+    if (flags['unlock_alchemy']) unlockedRecipes.push('alchemy')
+    if (flags['unlock_ritual']) unlockedRecipes.push('ritual')
+
     mergePermanentUnlocks({
       unlockedEndings: this.state.unlockedEndings,
       discoveredTiles: this.state.discoveredTiles,
       triggeredEvents: this.state.triggeredEvents,
+      unlockedRecipes,
+      completedAchievements: progress.completedAchievements,
     })
   }
 

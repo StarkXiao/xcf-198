@@ -6,9 +6,12 @@ import type { InventoryItem, CraftRecipe } from '@game/types/items'
 import type { GameEvent, Ending } from '@game/types/events'
 import type { ReputationMap } from '@game/types/faction'
 import type { GrowthTreeProgress, GrowthNode, GrowthTree } from '@game/types/growthTree'
+import type { Merchant, MerchantState } from '@game/types/merchant'
 import { GameEngine, type SerializedSave } from '@game/engine/GameEngine'
 import type { EventResult } from '@game/systems/eventSystem'
+import { findTriggeredEvents } from '@game/systems/eventSystem'
 import { getFactionReputationSummary } from '@game/systems/reputationSystem'
+import type { MerchantInteractionResult, AvailableItemResult } from '@game/systems/merchantSystem'
 import {
   getTimeline,
   rewindToSnapshot,
@@ -27,6 +30,13 @@ export const useGameStore = defineStore('game', () => {
   const lastEventResult = ref<EventResult | null>(null)
   const growthProgress = ref<GrowthTreeProgress | null>(null)
   const newUnlockNotification = ref<string | null>(null)
+  const merchantInteraction = ref<MerchantInteractionResult | null>(null)
+  const merchantPanelVisible = ref(false)
+  const lastMerchantPurchaseResult = ref<{
+    success: boolean
+    messages: string[]
+    triggeredEvent?: string
+  } | null>(null)
 
   const inventory = computed<InventoryItem[]>(() => state.value?.inventory ?? [])
   const growthTree = computed<GrowthTree | undefined>(() => {
@@ -92,6 +102,27 @@ export const useGameStore = defineStore('game', () => {
     return getFactionReputationSummary(state.value.reputation)
   })
 
+  const merchantState = computed<MerchantState | null>(() => {
+    return state.value?.merchantState || null
+  })
+
+  const currentMerchant = computed<Merchant | null>(() => {
+    return merchantInteraction.value?.merchant || null
+  })
+
+  const merchantAvailableItems = computed<AvailableItemResult[]>(() => {
+    return merchantInteraction.value?.availableItems || []
+  })
+
+  const merchantDialogue = computed<string>(() => {
+    return merchantInteraction.value?.dialogue || ''
+  })
+
+  const merchantSuccessfulDeals = computed<number>(() => {
+    if (!engine.value || !merchantInteraction.value?.merchant) return 0
+    return engine.value.getSuccessfulDeals(merchantInteraction.value.merchant.id)
+  })
+
   function startGame(selectedIdentity: Identity) {
     engine.value = new GameEngine(selectedIdentity)
     identity.value = selectedIdentity
@@ -114,7 +145,81 @@ export const useGameStore = defineStore('game', () => {
     if (result.events.length > 0) {
       currentEvent.value = result.events[0]
     }
+    checkMerchantFlags()
     return result
+  }
+
+  function checkMerchantFlags() {
+    if (!engine.value || !state.value) return
+    const openPanelFlag = state.value.flags['open_merchant_panel']
+    if (openPanelFlag && typeof openPanelFlag === 'string') {
+      openMerchantPanel(openPanelFlag)
+      delete state.value.flags['open_merchant_panel']
+    }
+    const triggerEventFlag = state.value.flags['merchant_trigger_event']
+    if (triggerEventFlag && typeof triggerEventFlag === 'string') {
+      setTimeout(() => {
+        if (!engine.value || !state.value) return
+        const tile = engine.value.getCurrentTile()
+        const questState = state.value.questState || {}
+        const rawEvents = findTriggeredEvents(state.value, tile?.type || 'forest', tile?.id || '', questState)
+        const matchedEvent = rawEvents.find((e: GameEvent) => e.id === triggerEventFlag)
+        if (matchedEvent) {
+          currentEvent.value = matchedEvent
+        }
+        delete state.value!.flags['merchant_trigger_event']
+      }, 500)
+    }
+  }
+
+  function openMerchantPanel(merchantId?: string): MerchantInteractionResult | null {
+    if (!engine.value) return null
+    let interaction: MerchantInteractionResult | null
+    if (merchantId) {
+      interaction = engine.value.openMerchantByFlag(merchantId)
+    } else {
+      interaction = engine.value.getMerchantInteraction()
+    }
+    if (interaction) {
+      merchantInteraction.value = interaction
+      merchantPanelVisible.value = true
+      syncFromEngine()
+    }
+    return interaction
+  }
+
+  function refreshMerchantPanel() {
+    if (!engine.value) return
+    const interaction = engine.value.getMerchantInteraction()
+    if (interaction) {
+      merchantInteraction.value = interaction
+      syncFromEngine()
+    }
+  }
+
+  function purchaseMerchantItem(itemIndex: number): {
+    success: boolean
+    messages: string[]
+    triggeredEvent?: string
+  } {
+    if (!engine.value) return { success: false, messages: ['错误'] }
+    const result = engine.value.purchaseMerchantItem(itemIndex)
+    lastMerchantPurchaseResult.value = result
+    messages.value.push(...result.messages)
+    refreshMerchantPanel()
+    syncFromEngine()
+    checkMerchantFlags()
+    return result
+  }
+
+  function closeMerchantPanel() {
+    if (!engine.value) return
+    const closeMsgs = engine.value.closeMerchant()
+    messages.value.push(...closeMsgs)
+    merchantInteraction.value = null
+    merchantPanelVisible.value = false
+    lastMerchantPurchaseResult.value = null
+    syncFromEngine()
   }
 
   function executeChoice(choiceId: string) {
@@ -126,6 +231,7 @@ export const useGameStore = defineStore('game', () => {
       messages.value.push(...result.messages)
     }
     currentEvent.value = null
+    checkMerchantFlags()
     return result
   }
 
@@ -135,6 +241,7 @@ export const useGameStore = defineStore('game', () => {
     currentEvent.value = null
     lastEventResult.value = null
     syncFromEngine()
+    checkMerchantFlags()
   }
 
   function getCraftableRecipes(): CraftRecipe[] {
@@ -247,6 +354,9 @@ export const useGameStore = defineStore('game', () => {
     lastEventResult.value = null
     growthProgress.value = null
     newUnlockNotification.value = null
+    merchantInteraction.value = null
+    merchantPanelVisible.value = false
+    lastMerchantPurchaseResult.value = null
   }
 
   function unlockGrowthNode(nodeId: string) {
@@ -396,6 +506,14 @@ export const useGameStore = defineStore('game', () => {
     scoutingPotionActive,
     scoutingPotionTurns,
     availableScoutingActions,
+    merchantState,
+    currentMerchant,
+    merchantInteraction,
+    merchantAvailableItems,
+    merchantDialogue,
+    merchantSuccessfulDeals,
+    merchantPanelVisible,
+    lastMerchantPurchaseResult,
     startGame,
     moveTo,
     executeChoice,
@@ -433,5 +551,10 @@ export const useGameStore = defineStore('game', () => {
     clearSnapshots,
     getPermanentRecords,
     createManualSnapshot,
+    openMerchantPanel,
+    refreshMerchantPanel,
+    purchaseMerchantItem,
+    closeMerchantPanel,
+    checkMerchantFlags,
   }
 })

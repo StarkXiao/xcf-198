@@ -8,6 +8,7 @@ import type { GameState, PlayerStats } from '../types/game'
 import { createDefaultReputation } from '../systems/reputationSystem'
 import { createInitialTime } from '../systems/timeSystem'
 import { createInitialAlienation } from '../systems/alienationSystem'
+import { createInitialMerchantState } from '../systems/merchantSystem'
 
 vi.mock('../utils/random', async () => {
   const actual = await vi.importActual<typeof import('../utils/random')>('../utils/random')
@@ -65,6 +66,7 @@ function createState(inventory: InventoryItem[]): GameState {
     currentEventId: null,
     position: { x: 0, y: 0 },
     reputation: createDefaultReputation(),
+    merchantState: createInitialMerchantState(),
   }
 }
 

@@ -94,6 +94,20 @@ import {
   calculateSanityBonus,
   calculateEnergyEfficiency,
 } from '../systems/affixSystem'
+import type {
+  Merchant,
+} from '../types/merchant'
+import {
+  createInitialMerchantState,
+  tryMerchantEncounter,
+  recordMerchantEncounter,
+  getAvailableItems,
+  getMerchantDialogue,
+  purchaseItem,
+  closeMerchantInteraction,
+  type MerchantInteractionResult,
+} from '../systems/merchantSystem'
+import { getMerchantById } from '../data/merchants'
 
 export interface EngineState {
   state: GameState
@@ -112,6 +126,7 @@ export interface MoveResult {
   dayChanged: boolean
   dangerInfo: DangerInfo | null
   lootQualityModifier: LootQualityModifier | null
+  merchantEncounter: Merchant | null
 }
 
 export class GameEngine {
@@ -135,6 +150,7 @@ export class GameEngine {
       ...data.state,
       inventory: initializeDurability(rawInventory),
       reputation: data.state.reputation || createDefaultReputation(),
+      merchantState: (data.state as any).merchantState || createInitialMerchantState(),
     }
     engine.identity = data.identity
     engine.growthProgress = data.growthProgress || createInitialGrowthProgress()
@@ -158,6 +174,7 @@ export class GameEngine {
       currentEventId: null,
       reputation: createDefaultReputation(),
       questState: createInitialQuestState(),
+      merchantState: createInitialMerchantState(),
     }
   }
 
@@ -182,6 +199,12 @@ export class GameEngine {
       flags: { ...this.state.flags },
       reputation: { ...this.state.reputation },
       questState: { ...this.state.questState },
+      merchantState: {
+        ...this.state.merchantState,
+        merchantStockOverrides: { ...this.state.merchantState.merchantStockOverrides },
+        encounteredMerchants: { ...this.state.merchantState.encounteredMerchants },
+        successfulDeals: { ...this.state.merchantState.successfulDeals },
+      },
     }
   }
 
@@ -242,6 +265,7 @@ export class GameEngine {
         dayChanged: false,
         dangerInfo: null,
         lootQualityModifier: null,
+        merchantEncounter: null,
       }
     }
 
@@ -259,6 +283,7 @@ export class GameEngine {
         dayChanged: false,
         dangerInfo: null,
         lootQualityModifier: null,
+        merchantEncounter: null,
       }
     }
 
@@ -342,6 +367,28 @@ export class GameEngine {
       return true
     })
 
+    let merchantEncounter: Merchant | null = null
+    if (triggerableEvents.length === 0 && this.state.status !== 'ending') {
+      merchantEncounter = tryMerchantEncounter(
+        tile.id,
+        this.state.time.day,
+        dangerInfo.value,
+        this.state.time.phase === 'night',
+        this.state.merchantState,
+      )
+      if (merchantEncounter) {
+        this.state.merchantState = recordMerchantEncounter(
+          this.state.merchantState,
+          merchantEncounter.id,
+          tile.id,
+          this.state.time.day,
+          this.state.time.phase,
+        )
+        this.state.flags['merchant_encounter'] = merchantEncounter.id
+        messages.push(`✨ 你遇到了${merchantEncounter.name}！`)
+      }
+    }
+
     const ending = checkForImmediateEnding(this.state)
     if (ending) {
       this.state.status = 'ending'
@@ -360,6 +407,7 @@ export class GameEngine {
       dayChanged,
       dangerInfo,
       lootQualityModifier,
+      merchantEncounter,
     }
   }
 
@@ -1236,6 +1284,138 @@ export class GameEngine {
 
   isKeyDecisionEvent(event: GameEvent): boolean {
     return event.onceOnly && event.choices.length >= 2
+  }
+
+  getCurrentMerchant(): Merchant | null {
+    const merchantId = this.state.merchantState.currentMerchant
+    if (!merchantId) return null
+    return getMerchantById(merchantId) || null
+  }
+
+  getMerchantInteraction(): MerchantInteractionResult | null {
+    const merchant = this.getCurrentMerchant()
+    if (!merchant || !this.state.merchantState.encounterInfo) return null
+
+    const availableItems = getAvailableItems(
+      merchant,
+      this.state.merchantState,
+      this.state.inventory,
+      this.state.reputation,
+      this.state.flags,
+    )
+    const dialogue = getMerchantDialogue(merchant, this.state.flags)
+
+    return {
+      merchant,
+      dialogue,
+      availableItems,
+      encounterInfo: this.state.merchantState.encounterInfo,
+    }
+  }
+
+  getSuccessfulDeals(merchantId: string): number {
+    return this.state.merchantState.successfulDeals[merchantId] || 0
+  }
+
+  purchaseMerchantItem(itemIndex: number): {
+    success: boolean
+    messages: string[]
+    triggeredEvent?: string
+  } {
+    const merchant = this.getCurrentMerchant()
+    if (!merchant) {
+      return { success: false, messages: ['没有正在交易的商人'] }
+    }
+
+    const purchase = purchaseItem(
+      merchant,
+      itemIndex,
+      this.state.merchantState,
+      this.state.inventory,
+      this.state.reputation,
+      this.state.flags,
+      this.identity,
+    )
+
+    this.state.inventory = purchase.newInventory
+    this.state.merchantState = purchase.newMerchantState
+    this.state.flags = purchase.newFlags
+    this.state.reputation = purchase.newReputation
+
+    if (purchase.result.statsChanges) {
+      if (purchase.result.statsChanges.sanity) {
+        this.state.stats.sanity = clamp(
+          this.state.stats.sanity + purchase.result.statsChanges.sanity,
+          0,
+          this.state.stats.maxSanity,
+        )
+      }
+      if (purchase.result.statsChanges.pollution) {
+        this.state.stats = applyPollutionEffect(
+          this.state.stats,
+          purchase.result.statsChanges.pollution,
+          this.identity,
+          this.getGrowthEffects(),
+        )
+      }
+      if (purchase.result.statsChanges.hp) {
+        this.state.stats.hp = clamp(
+          this.state.stats.hp + purchase.result.statsChanges.hp,
+          0,
+          this.state.stats.maxHp,
+        )
+      }
+    }
+
+    if (purchase.triggeredEvent) {
+      this.state.flags['merchant_trigger_event'] = purchase.triggeredEvent
+    }
+
+    const ending = checkForImmediateEnding(this.state)
+    if (ending) {
+      this.state.status = 'ending'
+      this.state.currentEndingId = ending.id
+    }
+
+    return {
+      success: purchase.result.success,
+      messages: purchase.result.messages,
+      triggeredEvent: purchase.triggeredEvent,
+    }
+  }
+
+  closeMerchant(): string[] {
+    const merchant = this.getCurrentMerchant()
+    const messages: string[] = []
+    if (merchant) {
+      messages.push(merchant.departureText)
+    }
+    this.state.merchantState = closeMerchantInteraction(this.state.merchantState)
+    if (this.state.flags['merchant_encounter']) {
+      delete this.state.flags['merchant_encounter']
+    }
+    if (this.state.flags['open_merchant_panel']) {
+      delete this.state.flags['open_merchant_panel']
+    }
+    return messages
+  }
+
+  openMerchantByFlag(merchantId: string): MerchantInteractionResult | null {
+    const merchant = getMerchantById(merchantId)
+    if (!merchant) return null
+
+    this.state.merchantState.currentMerchant = merchantId
+    if (!this.state.merchantState.encounterInfo) {
+      const tile = this.getCurrentTile()
+      this.state.merchantState.encounterInfo = {
+        merchantId,
+        tileId: tile?.id || 'unknown',
+        day: this.state.time.day,
+        phase: this.state.time.phase,
+      }
+    }
+
+    return this.getMerchantInteraction()
   }
 }
 

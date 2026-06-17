@@ -262,13 +262,16 @@ export function removeFromInventory(inventory: InventoryItem[], itemId: string, 
 }
 
 export function hasItem(inventory: InventoryItem[], itemId: string, count: number = 1): boolean {
-  const total = inventory.reduce((sum, item) => {
+  return getItemCount(inventory, itemId) >= count
+}
+
+export function getItemCount(inventory: InventoryItem[], itemId: string): number {
+  return inventory.reduce((sum, item) => {
     if (item.itemId === itemId) {
       return sum + item.count
     }
     return sum
   }, 0)
-  return total >= count
 }
 
 export function inventoryToItemIds(inventory: InventoryItem[]): string[] {

@@ -13,12 +13,28 @@ import SaveLoadPanel from '@components/SaveLoadPanel.vue'
 import ReputationPanel from '@components/ReputationPanel.vue'
 import GrowthTreePanel from '@components/GrowthTreePanel.vue'
 import TimelinePanel from '@components/TimelinePanel.vue'
+import MerchantPanel from '@components/MerchantPanel.vue'
 
 const router = useRouter()
 const gameStore = useGameStore()
 const uiStore = useUiStore()
-const { state, identity, currentTile, messages, currentDangerInfo, lootQualityModifier, availableGrowthNodes, newUnlockNotification, scoutingPotionActive, scoutingPotionTurns, availableScoutingActions } = storeToRefs(gameStore)
+const { state, identity, currentTile, messages, currentDangerInfo, lootQualityModifier, availableGrowthNodes, newUnlockNotification, scoutingPotionActive, scoutingPotionTurns, availableScoutingActions, currentMerchant, merchantAvailableItems, merchantDialogue, merchantSuccessfulDeals, merchantPanelVisible, reputation } = storeToRefs(gameStore)
 const { activePanel } = storeToRefs(uiStore)
+
+const merchantPanelRef = ref<InstanceType<typeof MerchantPanel> | null>(null)
+
+function handleMerchantPurchase(itemIndex: number) {
+  const result = gameStore.purchaseMerchantItem(itemIndex)
+  if (merchantPanelRef.value && result.messages.length > 0) {
+    for (const msg of result.messages) {
+      merchantPanelRef.value.addPurchaseMessage(msg)
+    }
+  }
+}
+
+function handleMerchantClose() {
+  gameStore.closeMerchantPanel()
+}
 
 const showGrowthModal = ref(false)
 
@@ -339,6 +355,17 @@ function doHarvestSpecial() {
     <EventDialog />
     <SaveLoadPanel />
     <TimelinePanel @rewound="() => {}" />
+    <MerchantPanel
+      ref="merchantPanelRef"
+      :visible="merchantPanelVisible"
+      :merchant="currentMerchant"
+      :availableItems="merchantAvailableItems"
+      :reputation="reputation"
+      :successfulDeals="merchantSuccessfulDeals"
+      :dialogue="merchantDialogue"
+      @close="handleMerchantClose"
+      @purchase="handleMerchantPurchase"
+    />
 
     <Teleport to="body">
       <Transition name="modal">

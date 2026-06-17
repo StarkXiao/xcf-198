@@ -17,6 +17,7 @@ import { getGrowthTreeByIdentityId } from '../data/growthTrees'
 import { createDefaultReputation } from '../systems/reputationSystem'
 import { createInitialTime } from '../systems/timeSystem'
 import { createInitialAlienation } from '../systems/alienationSystem'
+import { createInitialMerchantState } from '../systems/merchantSystem'
 
 const mockIdentity: Identity = {
   id: 'scholar',
@@ -62,6 +63,7 @@ function createMockState(): GameState {
     currentEndingId: null,
     currentEventId: null,
     reputation: createDefaultReputation(),
+    merchantState: createInitialMerchantState(),
   }
 }
 

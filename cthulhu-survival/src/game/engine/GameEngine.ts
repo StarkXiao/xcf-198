@@ -2,6 +2,7 @@ import type { GameState, MapTile, Position, DangerInfo } from '../types/game'
 import type { Identity } from '../types/identity'
 import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { GameEvent, Ending } from '../types/events'
+import type { GrowthTreeProgress, GrowthNode } from '../types/growthTree'
 import { MAP_TILES, getTileAt } from '../data/events'
 import { ITEMS } from '../data/items'
 import {
@@ -42,6 +43,16 @@ import {
   calculateLootQualityModifier,
   generateBonusLoot,
 } from '../systems/dangerSystem'
+import {
+  createInitialGrowthProgress,
+  getGrowthTreeForIdentity,
+  unlockNode as unlockNodeSystem,
+  useActiveNode as useActiveNodeSystem,
+  getAvailableUnlockableNodes,
+  decrementCooldowns,
+  checkNodeCanUnlock,
+  canUseActiveNode,
+} from '../systems/growthTreeSystem'
 import type { LootQualityModifier } from '../types/game'
 import { clamp } from '../utils/random'
 import { repairItem as repairItemSystem, canRepair, initializeDurability } from '../systems/durabilitySystem'
@@ -68,10 +79,12 @@ export interface MoveResult {
 export class GameEngine {
   private state: GameState
   private identity: Identity
+  private growthProgress: GrowthTreeProgress
 
   constructor(identity: Identity) {
     this.identity = identity
     this.state = this.createInitialState(identity)
+    this.growthProgress = createInitialGrowthProgress()
   }
 
   static fromSerialized(data: SerializedSave): GameEngine {
@@ -86,6 +99,7 @@ export class GameEngine {
       reputation: data.state.reputation || createDefaultReputation(),
     }
     engine.identity = data.identity
+    engine.growthProgress = data.growthProgress || createInitialGrowthProgress()
     return engine
   }
 
@@ -297,6 +311,7 @@ export class GameEngine {
   private handlePhaseChange() {
     const night = isNight(this.state.time)
     this.state.stats = applyPhaseEffects(this.state.stats, night, this.identity)
+    this.growthProgress = decrementCooldowns(this.growthProgress)
   }
 
   triggerEvent(event: GameEvent): void {
@@ -492,11 +507,63 @@ export class GameEngine {
   getActionsLeft(): number {
     return this.state.time.actionsLeft
   }
+
+  getGrowthProgress(): GrowthTreeProgress {
+    return {
+      ...this.growthProgress,
+      unlockedNodes: [...this.growthProgress.unlockedNodes],
+      activeNodeCooldowns: { ...this.growthProgress.activeNodeCooldowns },
+      completedAchievements: [...this.growthProgress.completedAchievements],
+    }
+  }
+
+  getGrowthTree() {
+    return getGrowthTreeForIdentity(this.identity)
+  }
+
+  checkNodeUnlock(nodeId: string) {
+    const tree = this.getGrowthTree()
+    if (!tree) return { canUnlock: false, satisfiedConditions: 0, totalConditions: 0, missingConditions: ['未找到成长树'] }
+    const node = tree.nodes.find(n => n.id === nodeId)
+    if (!node) return { canUnlock: false, satisfiedConditions: 0, totalConditions: 0, missingConditions: ['未找到节点'] }
+    return checkNodeCanUnlock(node, this.state, this.growthProgress)
+  }
+
+  unlockGrowthNode(nodeId: string): { success: boolean; message: string } {
+    const tree = this.getGrowthTree()
+    if (!tree) return { success: false, message: '未找到成长树' }
+    const result = unlockNodeSystem(nodeId, this.state, this.growthProgress, tree)
+    if (result.success) {
+      this.growthProgress = result.progress
+    }
+    return { success: result.success, message: result.message }
+  }
+
+  getAvailableGrowthNodes(): GrowthNode[] {
+    const tree = this.getGrowthTree()
+    if (!tree) return []
+    return getAvailableUnlockableNodes(this.state, this.growthProgress, tree)
+  }
+
+  useActiveGrowthNode(nodeId: string): { success: boolean; message: string } {
+    const tree = this.getGrowthTree()
+    if (!tree) return { success: false, message: '未找到成长树' }
+    const result = useActiveNodeSystem(nodeId, this.growthProgress, tree)
+    if (result.success) {
+      this.growthProgress = result.progress
+    }
+    return { success: result.success, message: result.message }
+  }
+
+  canUseActiveGrowthNode(nodeId: string): boolean {
+    return canUseActiveNode(nodeId, this.growthProgress)
+  }
 }
 
 export interface SerializedSave {
   state: GameState
   identity: Identity
   inventory: InventoryItem[]
+  growthProgress: GrowthTreeProgress
   savedAt: number
 }

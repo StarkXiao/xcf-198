@@ -5,6 +5,7 @@ import type { Identity } from '@game/types/identity'
 import type { InventoryItem, CraftRecipe } from '@game/types/items'
 import type { GameEvent, Ending } from '@game/types/events'
 import type { ReputationMap } from '@game/types/faction'
+import type { GrowthTreeProgress, GrowthNode, GrowthTree } from '@game/types/growthTree'
 import { GameEngine, type SerializedSave } from '@game/engine/GameEngine'
 import type { EventResult } from '@game/systems/eventSystem'
 import { getFactionReputationSummary } from '@game/systems/reputationSystem'
@@ -16,8 +17,18 @@ export const useGameStore = defineStore('game', () => {
   const messages = ref<string[]>([])
   const currentEvent = ref<GameEvent | null>(null)
   const lastEventResult = ref<EventResult | null>(null)
+  const growthProgress = ref<GrowthTreeProgress | null>(null)
+  const newUnlockNotification = ref<string | null>(null)
 
   const inventory = computed<InventoryItem[]>(() => state.value?.inventory ?? [])
+  const growthTree = computed<GrowthTree | undefined>(() => {
+    if (!engine.value || !identity.value) return undefined
+    return engine.value.getGrowthTree()
+  })
+  const availableGrowthNodes = computed<GrowthNode[]>(() => {
+    if (!engine.value) return []
+    return engine.value.getAvailableGrowthNodes()
+  })
 
   const currentTile = computed<MapTile | undefined>(() => {
     if (!engine.value || !state.value) return undefined
@@ -61,6 +72,7 @@ export const useGameStore = defineStore('game', () => {
     if (!engine.value) return
     state.value = engine.value.getState()
     identity.value = engine.value.getIdentity()
+    growthProgress.value = engine.value.getGrowthProgress()
   }
 
   function moveTo(pos: Position) {
@@ -163,11 +175,12 @@ export const useGameStore = defineStore('game', () => {
   }
 
   function serialize(): SerializedSave | null {
-    if (!engine.value || !state.value || !identity.value) return null
+    if (!engine.value || !state.value || !identity.value || !growthProgress.value) return null
     return {
       state: state.value,
       identity: identity.value,
       inventory: state.value.inventory,
+      growthProgress: growthProgress.value,
       savedAt: Date.now(),
     }
   }
@@ -193,6 +206,42 @@ export const useGameStore = defineStore('game', () => {
     messages.value = []
     currentEvent.value = null
     lastEventResult.value = null
+    growthProgress.value = null
+    newUnlockNotification.value = null
+  }
+
+  function unlockGrowthNode(nodeId: string) {
+    if (!engine.value) return { success: false, message: '错误' }
+    const result = engine.value.unlockGrowthNode(nodeId)
+    syncFromEngine()
+    if (result.success) {
+      messages.value.push(result.message)
+      newUnlockNotification.value = nodeId
+      setTimeout(() => {
+        newUnlockNotification.value = null
+      }, 3000)
+    }
+    return result
+  }
+
+  function checkGrowthNodeUnlock(nodeId: string) {
+    if (!engine.value) return { canUnlock: false, satisfiedConditions: 0, totalConditions: 0, missingConditions: [] }
+    return engine.value.checkNodeUnlock(nodeId)
+  }
+
+  function useActiveGrowthNode(nodeId: string) {
+    if (!engine.value) return { success: false, message: '错误' }
+    const result = engine.value.useActiveGrowthNode(nodeId)
+    syncFromEngine()
+    if (result.success) {
+      messages.value.push(result.message)
+    }
+    return result
+  }
+
+  function canUseActiveGrowthNode(nodeId: string) {
+    if (!engine.value) return false
+    return engine.value.canUseActiveGrowthNode(nodeId)
   }
 
   return {
@@ -203,6 +252,10 @@ export const useGameStore = defineStore('game', () => {
     messages,
     currentEvent,
     lastEventResult,
+    growthProgress,
+    growthTree,
+    availableGrowthNodes,
+    newUnlockNotification,
     currentTile,
     allTiles,
     actionsLeft,
@@ -232,5 +285,9 @@ export const useGameStore = defineStore('game', () => {
     addMessage,
     clearMessages,
     reset,
+    unlockGrowthNode,
+    checkGrowthNodeUnlock,
+    useActiveGrowthNode,
+    canUseActiveGrowthNode,
   }
 })

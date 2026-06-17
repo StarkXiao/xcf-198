@@ -58,6 +58,19 @@ import type { LootQualityModifier } from '../types/game'
 import { clamp } from '../utils/random'
 import { repairItem as repairItemSystem, canRepair, initializeDurability } from '../systems/durabilitySystem'
 import { createSnapshotFromSave, addSnapshot, mergePermanentUnlocks, getTimeline, saveTimeline } from '../utils/snapshot'
+import {
+  createInitialQuestState,
+  startQuest,
+  advanceQuestStep,
+  getActiveQuests,
+  getCompletedQuests,
+  getAvailableQuests,
+  getCurrentStep,
+  updateQuestProgressOnDayChange,
+  recordQuestChoice,
+  getQuestStatus,
+} from '../systems/questChainSystem'
+import { QUEST_CHAINS } from '../data/questChains'
 
 export interface EngineState {
   state: GameState
@@ -121,6 +134,7 @@ export class GameEngine {
       currentEndingId: null,
       currentEventId: null,
       reputation: createDefaultReputation(),
+      questState: createInitialQuestState(),
     }
   }
 
@@ -144,6 +158,7 @@ export class GameEngine {
       unlockedEndings: [...this.state.unlockedEndings],
       flags: { ...this.state.flags },
       reputation: { ...this.state.reputation },
+      questState: { ...this.state.questState },
     }
   }
 
@@ -265,9 +280,17 @@ export class GameEngine {
           ? '夜幕降临，小心行事...'
           : '黎明到来，阳光稍许驱散了阴霾。',
       )
+
+      if (dayChanged) {
+        const questUpdate = updateQuestProgressOnDayChange(this.state, this.getQuestState())
+        this.state.questState = questUpdate.questState
+        if (questUpdate.messages.length > 0) {
+          messages.push(...questUpdate.messages)
+        }
+      }
     }
 
-    const rawEvents = findTriggeredEvents(this.state, tile.type, tile.id)
+    const rawEvents = findTriggeredEvents(this.state, tile.type, tile.id, this.getQuestState())
     const filteredEvents = filterEventsByDanger(rawEvents, dangerInfo)
     const weightedEvents = weightEventsByDanger(filteredEvents, dangerInfo)
 
@@ -314,6 +337,10 @@ export class GameEngine {
     const tree = this.getGrowthTree()
     if (!tree) return []
     return getUnlockedPassiveEffects(this.growthProgress, tree)
+  }
+
+  private getQuestState() {
+    return this.state.questState || {}
   }
 
   private handlePhaseChange() {
@@ -411,9 +438,94 @@ export class GameEngine {
         this.updateLastPreEventSnapshot(event, { choice, success: result.success })
       }
     }
+
+    const questResult = this.checkAndAdvanceQuests(event.id, choiceId, result.success)
+    if (questResult.messages.length > 0) {
+      result.messages.push(...questResult.messages)
+    }
+
     this.updatePermanentUnlocks()
 
     return result
+  }
+
+  private checkAndAdvanceQuests(eventId: string, choiceId: string, success: boolean): {
+    messages: string[]
+  } {
+    const messages: string[] = []
+    const questState = this.getQuestState()
+
+    for (const quest of QUEST_CHAINS) {
+      const status = getQuestStatus(questState, quest.id)
+      if (status !== 'in_progress') continue
+
+      const currentStep = getCurrentStep(questState, quest.id)
+      if (!currentStep) continue
+
+      if (currentStep.eventTriggers?.includes(eventId)) {
+        const advanceResult = advanceQuestStep(
+          this.state,
+          questState,
+          quest.id,
+          currentStep.id,
+          success,
+        )
+
+        this.state.questState = advanceResult.questState
+        this.state.stats = advanceResult.stats
+        this.updateInventory(advanceResult.inventory)
+        this.state.reputation = advanceResult.reputation
+        this.state.flags = advanceResult.flags
+
+        if (advanceResult.unlockedEndings.length > 0) {
+          this.state.unlockedEndings.push(...advanceResult.unlockedEndings)
+        }
+        if (advanceResult.revealedTiles.length > 0) {
+          for (const tileId of advanceResult.revealedTiles) {
+            if (!this.state.discoveredTiles.includes(tileId)) {
+              this.state.discoveredTiles.push(tileId)
+            }
+          }
+        }
+
+        this.state.questState = recordQuestChoice(
+          advanceResult.questState,
+          quest.id,
+          currentStep.id,
+          choiceId,
+          this.state.time.day,
+          success,
+        )
+
+        messages.push(...advanceResult.messages)
+      }
+    }
+
+    return { messages }
+  }
+
+  startQuestById(questId: string): { success: boolean; message?: string } {
+    const result = startQuest(this.state, this.getQuestState(), questId)
+    if (result.success) {
+      this.state.questState = result.questState
+    }
+    return { success: result.success, message: result.message }
+  }
+
+  getActiveQuests() {
+    return getActiveQuests(this.getQuestState())
+  }
+
+  getCompletedQuests() {
+    return getCompletedQuests(this.getQuestState())
+  }
+
+  getAvailableQuests() {
+    return getAvailableQuests(this.state, this.getQuestState())
+  }
+
+  getQuestProgress(questId: string) {
+    return this.getQuestState()[questId] || null
   }
 
   closeEvent(): void {
@@ -424,7 +536,14 @@ export class GameEngine {
   checkChoiceAvail(event: GameEvent, choiceId: string) {
     const choice = event.choices.find(c => c.id === choiceId)
     if (!choice) return { available: false }
-    return checkChoiceRequirements(choice, this.state.inventory, this.state.stats, this.identity, this.state.reputation)
+    return checkChoiceRequirements(
+      choice,
+      this.state.inventory,
+      this.state.stats,
+      this.identity,
+      this.state.reputation,
+      this.getQuestState(),
+    )
   }
 
   getCraftableRecipes(): CraftRecipe[] {
@@ -507,7 +626,7 @@ export class GameEngine {
   }
 
   checkEndings(): Ending[] {
-    return checkAvailableEndings(this.state, this.state.inventory)
+    return checkAvailableEndings(this.state, this.state.inventory, this.getQuestState())
   }
 
   triggerEnding(endingId: string): void {

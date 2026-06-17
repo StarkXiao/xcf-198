@@ -1,4 +1,4 @@
-import type { GameEvent, EventChoice, EventConsequence } from '../types/events'
+import type { GameEvent, EventChoice, EventConsequence, QuestState } from '../types/events'
 import type { PlayerStats, GameState, DangerInfo } from '../types/game'
 import type { InventoryItem } from '../types/items'
 import type { Identity, SkillEffect } from '../types/identity'
@@ -12,6 +12,7 @@ import { getReputationChangeDescription } from '../data/factions'
 import { scaleSuccessRate, scaleItemGainCount, scaleStatChange } from './dangerSystem'
 import { isItemBroken, getDurabilityModifier, applyDurabilityWear, isItemWithDurability } from './durabilitySystem'
 import { ITEMS } from '../data/items'
+import { getQuestStatus, isStepReached, getQuestEventPoolEffects } from './questChainSystem'
 
 export interface EventResult {
   event: GameEvent
@@ -37,10 +38,13 @@ export function shouldTriggerEvent(
   state: GameState,
   tileType?: string,
   tileId?: string,
+  questState?: QuestState,
 ): boolean {
   if (event.onceOnly && state.triggeredEvents.includes(event.id)) {
     return false
   }
+
+  const qState = questState || state.questState || {}
 
   for (const cond of event.conditions) {
     switch (cond.type) {
@@ -64,6 +68,24 @@ export function shouldTriggerEvent(
         break
       case 'day_above':
         if (state.time.day < (cond.value || 0)) return false
+        break
+      case 'quest_completed':
+        if (!cond.questId || getQuestStatus(qState, cond.questId) !== 'completed') return false
+        break
+      case 'quest_not_completed':
+        if (!cond.questId || getQuestStatus(qState, cond.questId) === 'completed') return false
+        break
+      case 'quest_step_reached':
+        if (!cond.questId || !cond.stepId || !isStepReached(qState, cond.questId, cond.stepId)) return false
+        break
+      case 'quest_step_not_reached':
+        if (!cond.questId || !cond.stepId || isStepReached(qState, cond.questId, cond.stepId)) return false
+        break
+      case 'quest_active':
+        if (!cond.questId || getQuestStatus(qState, cond.questId) !== 'in_progress') return false
+        break
+      case 'quest_not_active':
+        if (!cond.questId || getQuestStatus(qState, cond.questId) === 'in_progress') return false
         break
     }
   }
@@ -93,9 +115,31 @@ export function findTriggeredEvents(
   state: GameState,
   tileType?: string,
   tileId?: string,
+  questState?: QuestState,
 ): GameEvent[] {
-  const triggered = EVENTS.filter(e => shouldTriggerEvent(e, state, tileType, tileId))
-  return triggered.sort((a, b) => b.priority - a.priority)
+  const qState = questState || state.questState || {}
+  const triggered = EVENTS.filter(e => shouldTriggerEvent(e, state, tileType, tileId, qState))
+  const sorted = triggered.sort((a, b) => b.priority - a.priority)
+  return applyQuestEventPoolEffects(sorted, qState)
+}
+
+function applyQuestEventPoolEffects(events: GameEvent[], questState: QuestState): GameEvent[] {
+  const effects = getQuestEventPoolEffects(questState)
+  if (effects.length === 0) return events
+
+  return events.map(event => {
+    const effect = effects.find(e => e.eventId === event.id)
+    if (!effect) return event
+
+    const modified = { ...event }
+    if (effect.weightMultiplier !== undefined) {
+      modified.weight = (modified.weight || 1) * effect.weightMultiplier
+    }
+    if (effect.priorityBoost !== undefined) {
+      modified.priority = modified.priority + effect.priorityBoost
+    }
+    return modified
+  }).sort((a, b) => b.priority - a.priority)
 }
 
 export function checkChoiceRequirements(
@@ -104,8 +148,11 @@ export function checkChoiceRequirements(
   stats: PlayerStats,
   identity: Identity,
   reputation: ReputationMap = { monastery: 0, deep_ones: 0, watchers: 0 },
+  questState?: QuestState,
 ): { available: boolean; reason?: string } {
   if (!choice.requirements) return { available: true }
+
+  const qState = questState || {}
 
   for (const req of choice.requirements) {
     switch (req.type) {
@@ -135,6 +182,21 @@ export function checkChoiceRequirements(
       case 'min_reputation':
         if (!req.factionId || !checkReputationRequirement(reputation, req.factionId, req.value || 0)) {
           return { available: false, reason: `声望不足` }
+        }
+        break
+      case 'quest_completed':
+        if (!req.questId || getQuestStatus(qState, req.questId) !== 'completed') {
+          return { available: false, reason: `尚未完成相关任务` }
+        }
+        break
+      case 'quest_step_reached':
+        if (!req.questId || !req.stepId || !isStepReached(qState, req.questId, req.stepId)) {
+          return { available: false, reason: `尚未达到任务进度` }
+        }
+        break
+      case 'quest_active':
+        if (!req.questId || getQuestStatus(qState, req.questId) !== 'in_progress') {
+          return { available: false, reason: `任务未激活` }
         }
         break
     }

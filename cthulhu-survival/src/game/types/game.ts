@@ -1,5 +1,6 @@
 import type { InventoryItem } from './items'
 import type { ReputationMap } from './faction'
+import type { QuestState } from './events'
 
 export type DayPhase = 'day' | 'night'
 
@@ -95,4 +96,5 @@ export interface GameState {
   currentEndingId: string | null
   currentEventId: string | null
   reputation: ReputationMap
+  questState?: QuestState
 }

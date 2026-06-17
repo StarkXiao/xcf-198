@@ -1,17 +1,20 @@
-import type { Ending, EndingRequirement } from '../types/events'
+import type { Ending, EndingRequirement, QuestState } from '../types/events'
 import type { GameState, PlayerStats } from '../types/game'
 import type { InventoryItem } from '../types/items'
 import type { ReputationMap } from '../types/faction'
 import { ENDINGS, getEndingById } from '../data/endings'
 import { hasItem } from './craftSystem'
 import { checkReputationRequirement, checkReputationBelow } from './reputationSystem'
+import { getQuestStatus, isStepReached } from './questChainSystem'
 
 export function checkAvailableEndings(
   state: GameState,
   inventory: InventoryItem[],
+  questState?: QuestState,
 ): Ending[] {
+  const qState = questState || state.questState || {}
   return ENDINGS.filter(ending =>
-    ending.requirements.every(req => checkRequirement(req, state.stats, state.flags, inventory, state.time.day, state.reputation)),
+    ending.requirements.every(req => checkRequirement(req, state.stats, state.flags, inventory, state.time.day, state.reputation, qState)),
   )
 }
 
@@ -34,6 +37,7 @@ function checkRequirement(
   inventory: InventoryItem[],
   day: number,
   reputation: ReputationMap = { monastery: 0, deep_ones: 0, watchers: 0 },
+  questState: QuestState = {},
 ): boolean {
   switch (req.type) {
     case 'flag_set':
@@ -56,6 +60,10 @@ function checkRequirement(
       return req.factionId ? checkReputationRequirement(reputation, req.factionId, req.value || 0) : false
     case 'reputation_below':
       return req.factionId ? checkReputationBelow(reputation, req.factionId, req.value || 0) : false
+    case 'quest_completed':
+      return req.questId ? getQuestStatus(questState, req.questId) === 'completed' : false
+    case 'quest_step_reached':
+      return req.questId && req.stepId ? isStepReached(questState, req.questId, req.stepId) : false
     default:
       return false
   }

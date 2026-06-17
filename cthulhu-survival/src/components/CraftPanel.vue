@@ -6,6 +6,7 @@ import { ITEMS } from '@game/data/items'
 import { FACTIONS } from '@game/data/factions'
 import type { CraftRecipe } from '@game/types/items'
 import { getItemDurabilityInfo, getDurabilityColor } from '@game/systems/durabilitySystem'
+import { calculateCraftSuccessBonus, calculateCraftYieldBonus } from '@game/systems/affixSystem'
 
 const gameStore = useGameStore()
 const { inventory, reputation } = storeToRefs(gameStore)
@@ -27,8 +28,38 @@ function reputationOk(r: CraftRecipe): boolean {
 }
 
 function hasIngredient(itemId: string, count: number): boolean {
-  const item = inventory.value.find(i => i.itemId === itemId)
-  return !!item && item.count >= count
+  const total = inventory.value.reduce((sum, item) => {
+    if (item.itemId === itemId) {
+      return sum + item.count
+    }
+    return sum
+  }, 0)
+  return total >= count
+}
+
+function getAffixedIngredients(itemId: string) {
+  return inventory.value.filter(item => item.itemId === itemId && item.affixes && item.affixes.length > 0)
+}
+
+function getCraftSuccessBonus(r: CraftRecipe): number {
+  return calculateCraftSuccessBonus(inventory.value, r.ingredients)
+}
+
+function getCraftYieldBonus(r: CraftRecipe): number {
+  return calculateCraftYieldBonus(inventory.value, r.ingredients)
+}
+
+function getAffixChance(r: CraftRecipe): number {
+  let chance = 0
+  for (const ing of r.ingredients) {
+    const affixedItems = getAffixedIngredients(ing.itemId)
+    for (const item of affixedItems) {
+      if (item.affixes) {
+        chance += 0.15 * item.affixes.length
+      }
+    }
+  }
+  return Math.min(chance, 0.8)
 }
 
 function toolDurabilityText(toolId: string): string {
@@ -80,6 +111,7 @@ function craft(r: CraftRecipe) {
             :class="{ ok: hasIngredient(ing.itemId, ing.count) }"
           >
             {{ ITEMS[ing.itemId]?.icon }} {{ ITEMS[ing.itemId]?.name }} x{{ ing.count }}
+            <span v-if="getAffixedIngredients(ing.itemId).length > 0" class="affix-badge">✨</span>
           </span>
           <span v-if="r.requiredTool" class="ing-chip tool-chip" :class="{ ok: hasIngredient(r.requiredTool, 1) }">
             🔧 {{ ITEMS[r.requiredTool]?.name }}
@@ -88,6 +120,19 @@ function craft(r: CraftRecipe) {
               class="tool-durability"
               :style="{ color: getDurabilityColor(toolDurabilityRatio(r.requiredTool)) }"
             >{{ toolDurabilityText(r.requiredTool) }}</span>
+          </span>
+        </div>
+
+        <div v-if="getCraftSuccessBonus(r) > 0 || getCraftYieldBonus(r) > 0" class="affix-bonuses">
+          <span class="bonus-label">词缀加成：</span>
+          <span v-if="getCraftSuccessBonus(r) > 0" class="bonus-item ok">
+            成功率 +{{ Math.round(getCraftSuccessBonus(r) * 100) }}%
+          </span>
+          <span v-if="getCraftYieldBonus(r) > 0" class="bonus-item ok">
+            产量 +{{ Math.round(getCraftYieldBonus(r) * 100) }}%
+          </span>
+          <span v-if="getAffixChance(r) > 0" class="bonus-item">
+            产物词缀概率 {{ Math.round(getAffixChance(r) * 100) }}%
           </span>
         </div>
 
@@ -203,10 +248,16 @@ function craft(r: CraftRecipe) {
   background: var(--color-bg-dark);
   border-radius: 4px;
   color: var(--color-danger);
+  position: relative;
 }
 
 .ing-chip.ok {
   color: var(--color-cthulhu-green-glow);
+}
+
+.affix-badge {
+  margin-left: 2px;
+  font-size: 10px;
 }
 
 .tool-chip {
@@ -218,6 +269,34 @@ function craft(r: CraftRecipe) {
 .tool-durability {
   font-size: 10px;
   font-weight: 600;
+}
+
+.affix-bonuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  background: rgba(90, 122, 191, 0.08);
+  border: 1px solid rgba(90, 122, 191, 0.25);
+  border-radius: 4px;
+  font-size: 11px;
+  align-items: center;
+}
+
+.bonus-label {
+  color: var(--color-text-muted);
+}
+
+.bonus-item {
+  padding: 2px 6px;
+  background: var(--color-bg-dark);
+  border-radius: 3px;
+  color: var(--color-text-secondary);
+}
+
+.bonus-item.ok {
+  color: var(--color-cthulhu-green-glow);
 }
 
 .cost {

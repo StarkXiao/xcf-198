@@ -4,6 +4,7 @@ import type { InventoryItem } from '../types/items'
 import { ITEMS } from '../data/items'
 import { getTileAt } from '../data/events'
 import { randomInt } from '../utils/random'
+import { createAffixedItem, calculateLootBonus, calculateAffixChanceFromEffects, calculateAffixRarityFromEffects } from './affixSystem'
 
 export type ReconTarget = 'hidden' | 'trap' | 'special' | 'all'
 
@@ -32,6 +33,7 @@ export interface HarvestResult {
   tileId: string
   harvested: boolean
   rewards: { itemId: string; count: number }[]
+  affixedItems: InventoryItem[]
   messages: string[]
   reputationGain?: { factionId: string; reputation: number }
 }
@@ -41,6 +43,7 @@ export interface LootHiddenResult {
   tileId: string
   looted: boolean
   items: { itemId: string; count: number }[]
+  affixedItems: InventoryItem[]
   flagsSet: string[]
   messages: string[]
 }
@@ -407,9 +410,11 @@ export function lootHidden(
   identity: Identity,
   _inventory: InventoryItem[],
   _stats: PlayerStats,
+  effects: { type: string; value: number }[] = [],
 ): LootHiddenResult {
   const messages: string[] = []
   const items: { itemId: string; count: number }[] = []
+  const affixedItems: InventoryItem[] = []
   const flagsSet: string[] = []
 
   if (!tile.hidden) {
@@ -418,6 +423,7 @@ export function lootHidden(
       tileId: tile.id,
       looted: false,
       items: [],
+      affixedItems: [],
       flagsSet: [],
       messages: ['这里没有隐藏的宝物。'],
     }
@@ -429,6 +435,7 @@ export function lootHidden(
       tileId: tile.id,
       looted: true,
       items: [],
+      affixedItems: [],
       flagsSet: [],
       messages: ['这里已经被搜刮过了。'],
     }
@@ -440,6 +447,7 @@ export function lootHidden(
       tileId: tile.id,
       looted: false,
       items: [],
+      affixedItems: [],
       flagsSet: [],
       messages: ['你还没有发现隐藏区域，先侦查一下吧。'],
     }
@@ -450,6 +458,7 @@ export function lootHidden(
   tile.hidden.looted = true
 
   if (tile.hidden.lootItems) {
+    const lootBonus = calculateLootBonus(_inventory)
     for (const loot of tile.hidden.lootItems) {
       let count = loot.count
       if (tile.hidden.type === 'hidden_loot' || tile.hidden.type === 'hidden_knowledge') {
@@ -458,9 +467,31 @@ export function lootHidden(
       if (tile.hidden.type === 'hidden_knowledge' && identity.scoutingSpecialty === 'scholar') {
         count = Math.round(count * 1.5)
       }
-      items.push({ itemId: loot.itemId, count })
+
       const itemData = ITEMS[loot.itemId]
-      messages.push(`📦 获得 ${itemData?.name || loot.itemId} x${count}`)
+      const canHaveAffix = itemData && (itemData.canHaveAffix || itemData.type === 'material' || itemData.type === 'tool' || itemData.type === 'weapon' || itemData.type === 'consumable')
+
+      const affixChanceBonus = calculateAffixChanceFromEffects(effects)
+      const affixRarityBonus = calculateAffixRarityFromEffects(effects)
+
+      if (canHaveAffix && count > 0 && Math.random() < 0.25 + lootBonus + affixChanceBonus) {
+        const rarityBoost = (tile.danger ? tile.danger * 0.1 : 0) + affixRarityBonus
+        const affixedItem = createAffixedItem(loot.itemId, 1, {
+          rarityBoost,
+          minAffixes: 1,
+          maxAffixes: tile.hidden.type === 'hidden_loot' ? 2 : 1,
+        })
+        if (affixedItem.affixes && affixedItem.affixes.length > 0) {
+          affixedItems.push(affixedItem)
+          messages.push(`✨ 获得带词缀物品：${itemData.name} x1`)
+          count -= 1
+        }
+      }
+
+      if (count > 0) {
+        items.push({ itemId: loot.itemId, count })
+        messages.push(`📦 获得 ${itemData?.name || loot.itemId} x${count}`)
+      }
     }
   }
 
@@ -484,6 +515,7 @@ export function lootHidden(
     tileId: tile.id,
     looted: true,
     items,
+    affixedItems,
     flagsSet,
     messages,
   }
@@ -494,9 +526,11 @@ export function harvestSpecialResource(
   identity: Identity,
   _inventory: InventoryItem[],
   _stats: PlayerStats,
+  effects: { type: string; value: number }[] = [],
 ): HarvestResult {
   const messages: string[] = []
   const rewards: { itemId: string; count: number }[] = []
+  const affixedItems: InventoryItem[] = []
 
   if (!tile.specialResource) {
     return {
@@ -504,6 +538,7 @@ export function harvestSpecialResource(
       tileId: tile.id,
       harvested: false,
       rewards: [],
+      affixedItems: [],
       messages: ['这里没有特殊资源。'],
     }
   }
@@ -514,6 +549,7 @@ export function harvestSpecialResource(
       tileId: tile.id,
       harvested: true,
       rewards: [],
+      affixedItems: [],
       messages: ['这里的资源已经被采集过了。'],
     }
   }
@@ -524,11 +560,13 @@ export function harvestSpecialResource(
       tileId: tile.id,
       harvested: false,
       rewards: [],
+      affixedItems: [],
       messages: ['你还没有发现特殊资源点，先侦查一下吧。'],
     }
   }
 
   const bonuses = getIdentityScoutingBonuses(identity, false)
+  const lootBonus = calculateLootBonus(_inventory)
 
   tile.specialResource.harvested = true
 
@@ -546,9 +584,31 @@ export function harvestSpecialResource(
       count = Math.round(count * 1.3)
     }
 
-    rewards.push({ itemId: reward.itemId, count })
     const itemData = ITEMS[reward.itemId]
-    messages.push(`✨ 获得 ${itemData?.name || reward.itemId} x${count}`)
+    const canHaveAffix = itemData && (itemData.canHaveAffix || itemData.type === 'material' || itemData.type === 'tool' || itemData.type === 'artifact')
+
+    const affixChanceBonus = calculateAffixChanceFromEffects(effects)
+    const affixRarityBonus = calculateAffixRarityFromEffects(effects)
+
+    if (canHaveAffix && count > 0 && Math.random() < 0.35 + lootBonus + affixChanceBonus) {
+      const rarityBoost = (tile.danger ? tile.danger * 0.15 : 0) + (itemData.rarity === 'rare' ? 0.2 : itemData.rarity === 'uncommon' ? 0.1 : 0) + affixRarityBonus
+      const affixCount = tile.specialResource.type === 'ancient_cache' || tile.specialResource.type === 'watchers_archive' ? 2 : 1
+      const affixedItem = createAffixedItem(reward.itemId, 1, {
+        rarityBoost,
+        minAffixes: 1,
+        maxAffixes: affixCount,
+      })
+      if (affixedItem.affixes && affixedItem.affixes.length > 0) {
+        affixedItems.push(affixedItem)
+        messages.push(`✨ 获得带词缀物品：${itemData.name} x1`)
+        count -= 1
+      }
+    }
+
+    if (count > 0) {
+      rewards.push({ itemId: reward.itemId, count })
+      messages.push(`✨ 获得 ${itemData?.name || reward.itemId} x${count}`)
+    }
   }
 
   let reputationGain: { factionId: string; reputation: number } | undefined
@@ -566,6 +626,7 @@ export function harvestSpecialResource(
     tileId: tile.id,
     harvested: true,
     rewards,
+    affixedItems,
     messages,
     reputationGain,
   }

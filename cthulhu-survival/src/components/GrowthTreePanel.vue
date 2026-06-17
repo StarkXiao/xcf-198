@@ -76,6 +76,8 @@ function getEffectDescription(node: GrowthNode): string {
       reduce_damage_taken: `伤害降低 ${Math.round(node.effect.value * 100)}%`,
       start_with_item: `初始物品`,
       reveal_map_area: `揭示地图区域`,
+      affix_chance_boost: `词缀出现概率 +${Math.round(node.effect.value * 100)}%`,
+      affix_rarity_boost: `词缀稀有度提升 +${node.effect.value}`,
     }
     return effectMap[node.effect.type] || node.description
   }

@@ -87,6 +87,13 @@ import {
 } from '../systems/questChainSystem'
 import { QUEST_CHAINS } from '../data/questChains'
 import { getAlienationBuffs } from '../systems/alienationSystem'
+import {
+  calculateEffectPowerBonus,
+  calculateHealingBoost,
+  calculatePollutionReduction,
+  calculateSanityBonus,
+  calculateEnergyEfficiency,
+} from '../systems/affixSystem'
 
 export interface EngineState {
   state: GameState
@@ -605,18 +612,46 @@ export class GameEngine {
   }
 
   craft(recipe: CraftRecipe) {
-    const result = craftItem(recipe, this.state.inventory, this.state.stats, this.identity)
+    const result = craftItem(recipe, this.state.inventory, this.state.stats, this.identity, this.getGrowthEffects())
     this.updateInventory(result.inventory)
     this.state.stats = result.stats
     return result
   }
 
   useItem(itemId: string): { success: boolean; message: string } {
-    const idx = this.state.inventory.findIndex(i => i.itemId === itemId)
-    if (idx === -1) return { success: false, message: '物品不存在' }
+    const idx = this.state.inventory.findIndex(i => i.itemId === itemId && !i.affixes)
+    if (idx === -1) {
+      const affixedIdx = this.state.inventory.findIndex(i => i.itemId === itemId && i.affixes)
+      if (affixedIdx !== -1) {
+        return this.useAffixedItem(affixedIdx)
+      }
+      return { success: false, message: '物品不存在' }
+    }
 
+    return this._useItemByIndex(idx)
+  }
+
+  useAffixedItem(index: number): { success: boolean; message: string } {
+    if (index < 0 || index >= this.state.inventory.length) {
+      return { success: false, message: '物品不存在' }
+    }
+    return this._useItemByIndex(index)
+  }
+
+  private _useItemByIndex(index: number): { success: boolean; message: string } {
+    const invItem = this.state.inventory[index]
+    if (!invItem) return { success: false, message: '物品不存在' }
+
+    const itemId = invItem.itemId
     const itemData = ITEMS[itemId]
     if (!itemData) return { success: false, message: '物品数据错误' }
+
+    const hasAffixes = !!invItem.affixes && invItem.affixes.length > 0
+    const effectPowerBonus = hasAffixes ? calculateEffectPowerBonus(invItem) : 0
+    const healingBonus = hasAffixes ? calculateHealingBoost(invItem) : 0
+    const pollutionReduction = hasAffixes ? calculatePollutionReduction(invItem) : 0
+    const sanityBonus = hasAffixes ? calculateSanityBonus(invItem) : 0
+    const energyEfficiency = hasAffixes ? calculateEnergyEfficiency(invItem) : 0
 
     if (itemId === 'scouting_potion') {
       return this.useScoutingPotion()
@@ -633,22 +668,48 @@ export class GameEngine {
     }
 
     if (itemData.hpOnUse) {
-      this.state.stats.hp = clamp(this.state.stats.hp + itemData.hpOnUse, 0, this.state.stats.maxHp)
+      const hpGain = itemData.hpOnUse * (1 + effectPowerBonus + healingBonus)
+      this.state.stats.hp = clamp(this.state.stats.hp + hpGain, 0, this.state.stats.maxHp)
     }
     if (itemData.sanityOnUse) {
-      this.state.stats.sanity = clamp(this.state.stats.sanity + itemData.sanityOnUse, 0, this.state.stats.maxSanity)
+      let sanityGain = itemData.sanityOnUse * (1 + effectPowerBonus)
+      if (sanityGain > 0) {
+        sanityGain *= (1 + sanityBonus)
+      } else {
+        sanityGain *= (1 - sanityBonus)
+      }
+      this.state.stats.sanity = clamp(this.state.stats.sanity + sanityGain, 0, this.state.stats.maxSanity)
     }
     if (itemData.pollutionOnUse) {
-      this.state.stats = applyPollutionEffect(this.state.stats, itemData.pollutionOnUse, this.identity, this.getGrowthEffects())
+      let pollutionChange = itemData.pollutionOnUse
+      if (pollutionChange > 0) {
+        pollutionChange *= (1 - pollutionReduction)
+      } else {
+        pollutionChange *= (1 + pollutionReduction)
+      }
+      this.state.stats = applyPollutionEffect(this.state.stats, pollutionChange, this.identity, this.getGrowthEffects())
     }
     if (itemData.hungerOnUse) {
-      this.state.stats.hunger = clamp(this.state.stats.hunger + itemData.hungerOnUse, 0, 100)
+      const hungerGain = itemData.hungerOnUse * (1 + effectPowerBonus)
+      this.state.stats.hunger = clamp(this.state.stats.hunger + hungerGain, 0, 100)
     }
     if (itemData.energyOnUse) {
-      this.state.stats.energy = clamp(this.state.stats.energy + itemData.energyOnUse, 0, 100)
+      let energyChange = itemData.energyOnUse
+      if (energyChange > 0) {
+        energyChange *= (1 + effectPowerBonus + energyEfficiency)
+      } else {
+        energyChange *= (1 - energyEfficiency)
+      }
+      this.state.stats.energy = clamp(this.state.stats.energy + energyChange, 0, 100)
     }
 
-    this.updateInventory(removeFromInventory(this.state.inventory, itemId, 1))
+    const newInventory = [...this.state.inventory]
+    if (invItem.count > 1) {
+      newInventory[index] = { ...newInventory[index], count: newInventory[index].count - 1 }
+    } else {
+      newInventory.splice(index, 1)
+    }
+    this.updateInventory(newInventory)
 
     const immediateEnding = checkForImmediateEnding(this.state)
     if (immediateEnding) {
@@ -891,14 +952,18 @@ export class GameEngine {
         items: [],
         flagsSet: [],
         messages: ['你不在任何可操作的区域'],
+        affixedItems: [],
       }
     }
 
-    const result = lootHidden(tile, this.identity, this.state.inventory, this.state.stats)
+    const result = lootHidden(tile, this.identity, this.state.inventory, this.state.stats, this.getGrowthEffects())
 
     if (result.looted) {
       for (const item of result.items) {
         this.state.inventory = addToInventory(this.state.inventory, item.itemId, item.count)
+      }
+      for (const affixedItem of result.affixedItems) {
+        this.state.inventory.push(affixedItem)
       }
       for (const flag of result.flagsSet) {
         this.state.flags[flag] = true
@@ -931,14 +996,18 @@ export class GameEngine {
         harvested: false,
         rewards: [],
         messages: ['你不在任何可操作的区域'],
+        affixedItems: [],
       }
     }
 
-    const result = harvestSpecialResource(tile, this.identity, this.state.inventory, this.state.stats)
+    const result = harvestSpecialResource(tile, this.identity, this.state.inventory, this.state.stats, this.getGrowthEffects())
 
     if (result.harvested) {
       for (const reward of result.rewards) {
         this.state.inventory = addToInventory(this.state.inventory, reward.itemId, reward.count)
+      }
+      for (const affixedItem of result.affixedItems) {
+        this.state.inventory.push(affixedItem)
       }
       if (result.reputationGain) {
         const factionId = result.reputationGain.factionId as FactionId

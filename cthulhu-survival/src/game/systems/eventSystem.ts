@@ -14,6 +14,7 @@ import { isItemBroken, getDurabilityModifier, applyDurabilityWear, isItemWithDur
 import { ITEMS } from '../data/items'
 import { getQuestStatus, isStepReached, getQuestEventPoolEffects } from './questChainSystem'
 import { modifyAlienationLevel, modifyPermanentCorruption, triggerAlienation, getAlienationBuffs, getAlienationDebuffs } from './alienationSystem'
+import { createAffixedItem } from './affixSystem'
 
 export interface EventResult {
   event: GameEvent
@@ -387,10 +388,37 @@ function applyConsequence(
         } else {
           count = Math.max(1, Math.round(count * (1 + alienationBuffs.lootBonus)))
         }
-        result.inventory = addToInventory(inventory, cons.itemId, count)
-        const originalCount = cons.count || 1
-        if (count > originalCount) {
-          result.message = `获得 x${count}${alienationBuffs.lootBonus > 0 ? '（异化加成）' : '危险区域的丰厚回报！'}`
+
+        const itemData = ITEMS[cons.itemId]
+        const canHaveAffix = itemData && (
+          itemData.canHaveAffix ||
+          itemData.type === 'material' ||
+          itemData.type === 'tool' ||
+          itemData.type === 'weapon' ||
+          itemData.type === 'consumable' ||
+          itemData.type === 'artifact'
+        )
+
+        if (canHaveAffix && count > 0 && Math.random() < 0.2) {
+          const rarityBoost = dangerInfo ? dangerInfo.value * 0.01 : 0
+          const affixedItem = createAffixedItem(cons.itemId, 1, {
+            rarityBoost,
+            minAffixes: 1,
+            maxAffixes: itemData.rarity === 'legendary' ? 3 : itemData.rarity === 'rare' ? 2 : 1,
+          })
+          if (affixedItem.affixes && affixedItem.affixes.length > 0) {
+            result.inventory = [...inventory, affixedItem]
+            count -= 1
+            result.message = `获得带词缀物品：${itemData.name} x1`
+          }
+        }
+
+        if (count > 0) {
+          result.inventory = addToInventory(result.inventory || inventory, cons.itemId, count)
+          const originalCount = cons.count || 1
+          if (count > originalCount) {
+            result.message = `获得 x${count}${alienationBuffs.lootBonus > 0 ? '（异化加成）' : '危险区域的丰厚回报！'}`
+          }
         }
       }
       break

@@ -163,6 +163,14 @@ export const useGameStore = defineStore('game', () => {
     return result
   }
 
+  function useAffixedItem(index: number) {
+    if (!engine.value) return { success: false, message: '错误' }
+    const result = engine.value.useAffixedItem(index)
+    syncFromEngine()
+    messages.value.push(result.message)
+    return result
+  }
+
   function rest() {
     if (!engine.value) return { success: false, messages: ['错误'] }
     const result = engine.value.restAtCamp()
@@ -396,6 +404,7 @@ export const useGameStore = defineStore('game', () => {
     canCraftRecipe,
     craft,
     useItem,
+    useAffixedItem,
     rest,
     canRepairItem,
     repairItem,

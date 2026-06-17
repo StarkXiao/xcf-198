@@ -7,6 +7,13 @@ import type { Identity } from '../types/identity'
 import { checkReputationRequirement } from './reputationSystem'
 import { isItemBroken, applyDurabilityWear, initializeDurability, isItemWithDurability } from './durabilitySystem'
 import { ITEMS } from '../data/items'
+import {
+  calculateCraftSuccessBonus,
+  calculateCraftYieldBonus,
+  createAffixedItem,
+  calculateAffixChanceFromEffects,
+  calculateAffixRarityFromEffects,
+} from './affixSystem'
 
 export function getAvailableRecipes(
   _inventory: InventoryItem[],
@@ -33,8 +40,13 @@ export function canCraft(
   stats: PlayerStats,
 ): { canCraft: boolean; reason?: string } {
   for (const ing of recipe.ingredients) {
-    const inv = inventory.find(i => i.itemId === ing.itemId)
-    if (!inv || inv.count < ing.count) {
+    const totalCount = inventory.reduce((sum, item) => {
+      if (item.itemId === ing.itemId) {
+        return sum + item.count
+      }
+      return sum
+    }, 0)
+    if (totalCount < ing.count) {
       return { canCraft: false, reason: '材料不足' }
     }
   }
@@ -65,6 +77,7 @@ export function craftItem(
   inventory: InventoryItem[],
   stats: PlayerStats,
   identity: Identity,
+  effects: { type: string; value: number }[] = [],
 ): {
   success: boolean
   inventory: InventoryItem[]
@@ -80,20 +93,37 @@ export function craftItem(
     if (s.effect.type === 'bonus_craft_success') return acc + s.effect.value
     return acc
   }, 0)
-  const successRate = Math.max(0.1, 1 - recipe.difficulty + bonusSuccess)
+
+  const affixSuccessBonus = calculateCraftSuccessBonus(inventory, recipe.ingredients)
+  const affixYieldBonus = calculateCraftYieldBonus(inventory, recipe.ingredients)
+
+  const successRate = Math.max(0.1, 1 - recipe.difficulty + bonusSuccess + affixSuccessBonus)
   const success = chance(successRate)
 
   let newInventory = [...inventory]
   let newStats = { ...stats }
 
   for (const ing of recipe.ingredients) {
-    const idx = newInventory.findIndex(i => i.itemId === ing.itemId)
-    if (idx !== -1) {
-      newInventory[idx] = { ...newInventory[idx], count: newInventory[idx].count - ing.count }
-      if (newInventory[idx].count <= 0) {
-        newInventory = newInventory.filter((_, i) => i !== idx)
-      }
+    let remaining = ing.count
+    const itemIndices = newInventory
+      .map((item, idx) => ({ item, idx }))
+      .filter(x => x.item.itemId === ing.itemId)
+      .sort((a, b) => {
+        const aHasAffix = !!a.item.affixes && a.item.affixes.length > 0
+        const bHasAffix = !!b.item.affixes && b.item.affixes.length > 0
+        if (aHasAffix && !bHasAffix) return 1
+        if (!aHasAffix && bHasAffix) return -1
+        return 0
+      })
+
+    for (const { item, idx } of itemIndices) {
+      if (remaining <= 0) break
+      const take = Math.min(item.count, remaining)
+      newInventory[idx] = { ...newInventory[idx], count: newInventory[idx].count - take }
+      remaining -= take
     }
+
+    newInventory = newInventory.filter(item => item.count > 0)
   }
 
   newStats.energy = Math.max(0, newStats.energy - recipe.energyCost)
@@ -101,30 +131,72 @@ export function craftItem(
   newStats.pollution = Math.min(100, newStats.pollution + recipe.pollutionCost)
 
   if (success) {
-    const existingIdx = newInventory.findIndex(i => i.itemId === recipe.result.itemId)
     const resultItemData = ITEMS[recipe.result.itemId]
-    if (existingIdx !== -1) {
-      newInventory[existingIdx] = {
-        ...newInventory[existingIdx],
-        count: newInventory[existingIdx].count + recipe.result.count,
+    let resultCount = recipe.result.count
+    if (affixYieldBonus > 0) {
+      resultCount = Math.max(1, Math.round(resultCount * (1 + affixYieldBonus)))
+    }
+
+    const canResultHaveAffix = resultItemData && (
+      resultItemData.canHaveAffix ||
+      resultItemData.type === 'tool' ||
+      resultItemData.type === 'weapon' ||
+      resultItemData.type === 'consumable' ||
+      resultItemData.type === 'artifact'
+    )
+
+    let affixChance = 0
+    let totalRarityBoost = 0
+    for (const ing of recipe.ingredients) {
+      for (const invItem of inventory) {
+        if (invItem.itemId === ing.itemId && invItem.affixes && invItem.affixes.length > 0) {
+          affixChance += 0.15 * invItem.affixes.length
+          totalRarityBoost += invItem.affixes.length * 0.1
+        }
       }
-    } else {
-      const newItem: InventoryItem = { itemId: recipe.result.itemId, count: recipe.result.count }
-      if (isItemWithDurability(resultItemData)) {
-        newItem.durability = resultItemData.maxDurability
+    }
+
+    affixChance += calculateAffixChanceFromEffects(effects)
+    totalRarityBoost += calculateAffixRarityFromEffects(effects)
+
+    if (canResultHaveAffix && resultCount > 0 && Math.random() < Math.min(affixChance, 0.8)) {
+      const affixedItem = createAffixedItem(recipe.result.itemId, 1, {
+        rarityBoost: totalRarityBoost,
+        minAffixes: 1,
+        maxAffixes: 2,
+      })
+      if (affixedItem.affixes && affixedItem.affixes.length > 0) {
+        newInventory.push(affixedItem)
+        resultCount -= 1
       }
-      newInventory.push(newItem)
+    }
+
+    if (resultCount > 0) {
+      const existingIdx = newInventory.findIndex(i => i.itemId === recipe.result.itemId && !i.affixes)
+      if (existingIdx !== -1) {
+        newInventory[existingIdx] = {
+          ...newInventory[existingIdx],
+          count: newInventory[existingIdx].count + resultCount,
+        }
+      } else {
+        const newItem: InventoryItem = { itemId: recipe.result.itemId, count: resultCount }
+        if (isItemWithDurability(resultItemData)) {
+          newItem.durability = resultItemData.maxDurability
+        }
+        newInventory.push(newItem)
+      }
     }
 
     if (recipe.requiredTool) {
       newInventory = applyDurabilityWear(newInventory, recipe.requiredTool)
     }
 
+    const bonusMsg = affixYieldBonus > 0 ? `（词缀加成：产量+${Math.round(affixYieldBonus * 100)}%）` : ''
     return {
       success: true,
       inventory: newInventory,
       stats: newStats,
-      message: `合成成功！获得 ${recipe.name} x${recipe.result.count}`,
+      message: `合成成功！获得 ${recipe.name} x${recipe.result.count}${bonusMsg}`,
     }
   } else {
     if (recipe.requiredTool) {
@@ -140,11 +212,11 @@ export function craftItem(
 }
 
 export function addToInventory(inventory: InventoryItem[], itemId: string, count: number = 1): InventoryItem[] {
-  const idx = inventory.findIndex(i => i.itemId === itemId)
   const itemData = ITEMS[itemId]
-  if (idx !== -1) {
+  const existingIdx = inventory.findIndex(i => i.itemId === itemId && !i.affixes)
+  if (existingIdx !== -1) {
     return inventory.map((item, i) =>
-      i === idx ? { ...item, count: item.count + count } : item,
+      i === existingIdx ? { ...item, count: item.count + count } : item,
     )
   }
   const newItem: InventoryItem = { itemId, count }
@@ -155,20 +227,45 @@ export function addToInventory(inventory: InventoryItem[], itemId: string, count
 }
 
 export function removeFromInventory(inventory: InventoryItem[], itemId: string, count: number = 1): InventoryItem[] {
-  const idx = inventory.findIndex(i => i.itemId === itemId)
-  if (idx === -1) return inventory
-  const newCount = inventory[idx].count - count
-  if (newCount <= 0) {
-    return inventory.filter((_, i) => i !== idx)
+  let remaining = count
+  const newInventory = [...inventory]
+
+  const normalIdx = newInventory.findIndex(i => i.itemId === itemId && !i.affixes)
+  if (normalIdx !== -1) {
+    const take = Math.min(newInventory[normalIdx].count, remaining)
+    newInventory[normalIdx] = { ...newInventory[normalIdx], count: newInventory[normalIdx].count - take }
+    remaining -= take
   }
-  return inventory.map((item, i) =>
-    i === idx ? { ...item, count: newCount } : item,
-  )
+
+  if (remaining > 0) {
+    const affixedItems = newInventory
+      .map((item, idx) => ({ item, idx }))
+      .filter(x => x.item.itemId === itemId && !!x.item.affixes)
+      .sort((a, b) => {
+        const aCount = a.item.affixes?.length || 0
+        const bCount = b.item.affixes?.length || 0
+        return aCount - bCount
+      })
+
+    for (const { item, idx } of affixedItems) {
+      if (remaining <= 0) break
+      const take = Math.min(item.count, remaining)
+      newInventory[idx] = { ...newInventory[idx], count: newInventory[idx].count - take }
+      remaining -= take
+    }
+  }
+
+  return newInventory.filter(item => item.count > 0)
 }
 
 export function hasItem(inventory: InventoryItem[], itemId: string, count: number = 1): boolean {
-  const item = inventory.find(i => i.itemId === itemId)
-  return !!item && item.count >= count
+  const total = inventory.reduce((sum, item) => {
+    if (item.itemId === itemId) {
+      return sum + item.count
+    }
+    return sum
+  }, 0)
+  return total >= count
 }
 
 export function inventoryToItemIds(inventory: InventoryItem[]): string[] {

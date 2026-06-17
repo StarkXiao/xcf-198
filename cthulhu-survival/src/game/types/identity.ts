@@ -53,6 +53,8 @@ export type SkillEffectType =
   | 'reveal_radius_increase'
   | 'scouting_energy_cost_reduction'
   | 'identity_specific_scouting'
+  | 'affix_chance_boost'
+  | 'affix_rarity_boost'
 
 export type IdentityScoutingSpecialty = 'scholar' | 'detective' | 'priest' | 'hunter' | null
 

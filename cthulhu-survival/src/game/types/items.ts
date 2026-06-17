@@ -1,4 +1,5 @@
 import type { FactionId } from './faction'
+import type { ItemAffixInstance } from './affix'
 
 export type ItemType = 'material' | 'tool' | 'consumable' | 'artifact' | 'weapon'
 
@@ -26,6 +27,8 @@ export interface Item {
   durabilityCostPerUse?: number
   repairMaterials?: { itemId: string; count: number }[]
   repairAmount?: number
+  canHaveAffix?: boolean
+  affixChance?: number
 }
 
 export interface LootTableEntry {
@@ -55,6 +58,8 @@ export interface InventoryItem {
   itemId: string
   count: number
   durability?: number
+  affixes?: ItemAffixInstance[]
+  instanceId?: string
 }
 
 export interface CraftRecipe {

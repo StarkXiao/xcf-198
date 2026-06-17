@@ -360,7 +360,7 @@ export class GameEngine {
     const filteredEvents = filterEventsByDanger(rawEvents, dangerInfo)
     const weightedEvents = weightEventsByDanger(filteredEvents, dangerInfo)
 
-    const triggerableEvents = weightedEvents.filter(e => {
+    let triggerableEvents = weightedEvents.filter(e => {
       if (e.trigger.type === 'tile_enter' && e.trigger.tileId) {
         return tile.hasEvent && tile.eventId === e.id
       }
@@ -386,6 +386,15 @@ export class GameEngine {
         )
         this.state.flags['merchant_encounter'] = merchantEncounter.id
         messages.push(`✨ 你遇到了${merchantEncounter.name}！`)
+        const merchantRawEvents = findTriggeredEvents(this.state, tile.type, tile.id, this.getQuestState())
+        const merchantFiltered = filterEventsByDanger(merchantRawEvents, dangerInfo)
+        const merchantWeighted = weightEventsByDanger(merchantFiltered, dangerInfo)
+        triggerableEvents = merchantWeighted.filter(e => {
+          if (e.trigger.type === 'tile_enter' && e.trigger.tileId) {
+            return tile.hasEvent && tile.eventId === e.id
+          }
+          return true
+        })
       }
     }
 

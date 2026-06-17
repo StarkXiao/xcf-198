@@ -158,6 +158,9 @@ export const useGameStore = defineStore('game', () => {
     }
     const triggerEventFlag = state.value.flags['merchant_trigger_event']
     if (triggerEventFlag && typeof triggerEventFlag === 'string') {
+      if (merchantPanelVisible.value) {
+        closeMerchantPanel()
+      }
       setTimeout(() => {
         if (!engine.value || !state.value) return
         const tile = engine.value.getCurrentTile()
@@ -168,7 +171,7 @@ export const useGameStore = defineStore('game', () => {
           currentEvent.value = matchedEvent
         }
         delete state.value!.flags['merchant_trigger_event']
-      }, 500)
+      }, 300)
     }
   }
 

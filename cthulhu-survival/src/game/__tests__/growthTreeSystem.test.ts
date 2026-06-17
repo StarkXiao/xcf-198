@@ -16,6 +16,7 @@ import {
 import { getGrowthTreeByIdentityId } from '../data/growthTrees'
 import { createDefaultReputation } from '../systems/reputationSystem'
 import { createInitialTime } from '../systems/timeSystem'
+import { createInitialAlienation } from '../systems/alienationSystem'
 
 const mockIdentity: Identity = {
   id: 'scholar',
@@ -48,6 +49,7 @@ function createMockState(): GameState {
       pollution: 10,
       hunger: 60,
       energy: 100,
+      alienation: createInitialAlienation(),
     },
     position: { x: 4, y: 3 },
     inventory: [],

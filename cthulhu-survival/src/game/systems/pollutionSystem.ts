@@ -1,6 +1,7 @@
 import type { PlayerStats } from '../types/game'
 import type { Identity, SkillEffect } from '../types/identity'
 import { clamp } from '../utils/random'
+import { createInitialAlienation, canTriggerAlienation, triggerAlienation, applyAlienationPhaseEffects } from './alienationSystem'
 
 export function createInitialStats(identity: Identity): PlayerStats {
   const s = identity.baseStats
@@ -12,6 +13,7 @@ export function createInitialStats(identity: Identity): PlayerStats {
     pollution: s.startPollution,
     hunger: s.startHunger,
     energy: s.startEnergy,
+    alienation: createInitialAlienation(),
   }
 }
 
@@ -38,27 +40,27 @@ export function applyPollutionEffect(
   }
 
   const newPollution = clamp(stats.pollution + actualGain, 0, 100)
-  let newSanity = stats.sanity
+  let newStats = { ...stats, pollution: newPollution }
 
   if (newPollution >= 80) {
-    newSanity = clamp(newSanity - 5, 0, stats.maxSanity)
+    newStats.sanity = clamp(newStats.sanity - 5, 0, stats.maxSanity)
   } else if (newPollution >= 60) {
-    newSanity = clamp(newSanity - 2, 0, stats.maxSanity)
+    newStats.sanity = clamp(newStats.sanity - 2, 0, stats.maxSanity)
   }
 
   if (newPollution >= 90) {
     return {
-      ...stats,
+      ...newStats,
       pollution: 100,
       sanity: 0,
     }
   }
 
-  return {
-    ...stats,
-    pollution: newPollution,
-    sanity: newSanity,
+  if (canTriggerAlienation(newStats)) {
+    newStats = triggerAlienation(newStats, identity, growthEffects)
   }
+
+  return newStats
 }
 
 export function applyPhaseEffects(
@@ -93,6 +95,12 @@ export function applyPhaseEffects(
   if (newStats.energy <= 0) {
     newStats.hp = clamp(newStats.hp - 5, 0, newStats.maxHp)
     newStats.sanity = clamp(newStats.sanity - 3, 0, newStats.maxSanity)
+  }
+
+  newStats = applyAlienationPhaseEffects(newStats, isNight, identity, growthEffects)
+
+  if (canTriggerAlienation(newStats)) {
+    newStats = triggerAlienation(newStats, identity, growthEffects)
   }
 
   return newStats

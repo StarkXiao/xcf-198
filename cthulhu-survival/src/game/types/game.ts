@@ -44,6 +44,29 @@ export interface TimeState {
   maxActionsPerPhase: number
 }
 
+export interface AlienationState {
+  active: boolean
+  level: number
+  duration: number
+  maxDuration: number
+  permanentCorruption: number
+}
+
+export interface AlienationBuffs {
+  maxHpBonus: number
+  strengthBonus: number
+  speedBonus: number
+  pollutionResistanceBonus: number
+  lootBonus: number
+}
+
+export interface AlienationDebuffs {
+  sanityDrainPerPhase: number
+  maxSanityReduction: number
+  hungerIncrease: number
+  socialPenalty: number
+}
+
 export interface PlayerStats {
   hp: number
   maxHp: number
@@ -52,6 +75,7 @@ export interface PlayerStats {
   pollution: number
   hunger: number
   energy: number
+  alienation: AlienationState
 }
 
 export type TileType = 'forest' | 'ruins' | 'lake' | 'cave' | 'village' | 'shrine' | 'camp'

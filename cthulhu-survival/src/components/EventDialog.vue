@@ -2,15 +2,23 @@
 import { computed } from 'vue'
 import { useGameStore } from '@stores/gameStore'
 import { storeToRefs } from 'pinia'
+import { getEffectiveChoice } from '@game/systems/eventSystem'
+import { getAlienationStatus } from '@game/systems/alienationSystem'
 
 const gameStore = useGameStore()
-const { currentEvent, lastEventResult } = storeToRefs(gameStore)
+const { currentEvent, lastEventResult, state } = storeToRefs(gameStore)
+
+const alienationInfo = computed(() => {
+  if (!state.value) return { isActive: false, levelName: '', color: '#fff', permanentCorruption: 0, durationText: '', description: '' }
+  return getAlienationStatus(state.value.stats.alienation)
+})
 
 const choices = computed(() => {
-  if (!currentEvent.value) return []
+  if (!currentEvent.value || !state.value) return []
   return currentEvent.value.choices.map(c => {
+    const effectiveChoice = getEffectiveChoice(c, state.value!.stats)
     const { available, reason } = gameStore.checkChoiceAvail(c.id)
-    return { ...c, available, reason }
+    return { ...effectiveChoice, originalId: c.id, available, reason, hasAlienationVariant: !!c.alienationVariant }
   })
 })
 
@@ -55,12 +63,19 @@ const typeIcon: Record<string, string> = {
               v-for="c in choices"
               :key="c.id"
               class="choice-btn"
-              :class="{ disabled: !c.available, hasSuccess: c.successRate !== undefined }"
+              :class="{ 
+                disabled: !c.available, 
+                hasSuccess: c.successRate !== undefined,
+                'alienation-choice': c.hasAlienationVariant && (alienationInfo.isActive || alienationInfo.permanentCorruption > 0)
+              }"
               :disabled="!c.available"
               @click="c.available && selectChoice(c.id)"
             >
               <div class="choice-main">
-                <span class="choice-text">{{ c.text }}</span>
+                <span class="choice-text">
+                  <span v-if="c.hasAlienationVariant && (alienationInfo.isActive || alienationInfo.permanentCorruption > 0)" class="alienation-mark">👁️</span>
+                  {{ c.text }}
+                </span>
                 <span v-if="c.successRate !== undefined" class="success-rate">
                   成功率 {{ Math.round(c.successRate * 100) }}%
                 </span>
@@ -197,6 +212,33 @@ const typeIcon: Record<string, string> = {
   font-size: 12px;
   color: var(--color-danger);
   margin-top: 4px;
+}
+
+.alienation-choice {
+  border-color: var(--color-alienation, #8a5abf);
+  background: rgba(138, 90, 191, 0.08);
+}
+
+.alienation-choice:not(:disabled):hover {
+  border-color: var(--color-alienation-glow, #a84ac4);
+  background: rgba(168, 74, 196, 0.15);
+  box-shadow: 0 0 12px rgba(168, 74, 196, 0.3);
+}
+
+.alienation-mark {
+  margin-right: 6px;
+  animation: alienation-glow 2s ease-in-out infinite;
+}
+
+@keyframes alienation-glow {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.7;
+    filter: brightness(1.3);
+  }
 }
 
 .close-row {

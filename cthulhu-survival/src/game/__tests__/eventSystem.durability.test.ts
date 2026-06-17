@@ -7,6 +7,7 @@ import type { Identity } from '../types/identity'
 import type { GameState, PlayerStats } from '../types/game'
 import { createDefaultReputation } from '../systems/reputationSystem'
 import { createInitialTime } from '../systems/timeSystem'
+import { createInitialAlienation } from '../systems/alienationSystem'
 
 vi.mock('../utils/random', async () => {
   const actual = await vi.importActual<typeof import('../utils/random')>('../utils/random')
@@ -45,6 +46,7 @@ const defaultStats: PlayerStats = {
   hunger: 100,
   energy: 100,
   pollution: 0,
+  alienation: createInitialAlienation(),
 }
 
 function createState(inventory: InventoryItem[]): GameState {

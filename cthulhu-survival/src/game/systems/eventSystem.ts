@@ -13,6 +13,7 @@ import { scaleSuccessRate, scaleItemGainCount, scaleStatChange } from './dangerS
 import { isItemBroken, getDurabilityModifier, applyDurabilityWear, isItemWithDurability } from './durabilitySystem'
 import { ITEMS } from '../data/items'
 import { getQuestStatus, isStepReached, getQuestEventPoolEffects } from './questChainSystem'
+import { modifyAlienationLevel, modifyPermanentCorruption, triggerAlienation } from './alienationSystem'
 
 export interface EventResult {
   event: GameEvent
@@ -142,6 +143,29 @@ function applyQuestEventPoolEffects(events: GameEvent[], questState: QuestState)
   }).sort((a, b) => b.priority - a.priority)
 }
 
+export function getEffectiveChoice(
+  choice: EventChoice,
+  stats: PlayerStats,
+): EventChoice {
+  if (!choice.alienationVariant) return choice
+
+  const alienationLevel = stats.alienation.level + Math.floor(stats.alienation.permanentCorruption)
+  const minLevel = choice.alienationVariant.minLevel || 1
+
+  if (alienationLevel >= minLevel && (stats.alienation.active || stats.alienation.permanentCorruption > 0)) {
+    const variant = choice.alienationVariant
+    return {
+      ...choice,
+      text: variant.text || choice.text,
+      description: variant.description || choice.description,
+      successRate: variant.successRate !== undefined ? variant.successRate : choice.successRate,
+      consequences: variant.consequences || choice.consequences,
+    }
+  }
+
+  return choice
+}
+
 export function checkChoiceRequirements(
   choice: EventChoice,
   inventory: InventoryItem[],
@@ -212,8 +236,10 @@ export function executeEventChoice(
   dangerInfo: DangerInfo | null = null,
   growthEffects: SkillEffect[] = [],
 ): EventResult | null {
-  const choice = event.choices.find(c => c.id === choiceId)
-  if (!choice) return null
+  const originalChoice = event.choices.find(c => c.id === choiceId)
+  if (!originalChoice) return null
+
+  const choice = getEffectiveChoice(originalChoice, state.stats)
 
   let success: boolean
   if (choice.successRate !== undefined) {
@@ -432,6 +458,30 @@ function applyConsequence(
         result.reputation = modifyReputation(reputation, cons.factionId, cons.value)
         result.message = getReputationChangeDescription(cons.factionId, cons.value)
       }
+      break
+    case 'change_alienation_level':
+      if (cons.value) {
+        result.stats = modifyAlienationLevel(stats, cons.value)
+        if (cons.value > 0) {
+          result.message = `异化等级提升了！`
+        } else {
+          result.message = `异化等级有所降低...`
+        }
+      }
+      break
+    case 'change_permanent_corruption':
+      if (cons.value) {
+        result.stats = modifyPermanentCorruption(stats, cons.value)
+        if (cons.value > 0) {
+          result.message = `永久腐化加深了...`
+        } else {
+          result.message = `永久腐化有所减轻`
+        }
+      }
+      break
+    case 'trigger_alienation':
+      result.stats = triggerAlienation(stats, identity, growthEffects)
+      result.message = `你感到身体发生了异变...异化状态启动！`
       break
     case 'text_feedback':
       result.message = cons.text

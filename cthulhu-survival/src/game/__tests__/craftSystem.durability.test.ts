@@ -12,6 +12,7 @@ import { ITEMS } from '../data/items'
 import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { PlayerStats } from '../types/game'
 import type { Identity } from '../types/identity'
+import { createInitialAlienation } from '../systems/alienationSystem'
 
 vi.mock('../utils/random', () => ({
   chance: vi.fn(() => true),
@@ -44,6 +45,7 @@ const defaultStats: PlayerStats = {
   hunger: 100,
   energy: 100,
   pollution: 0,
+  alienation: createInitialAlienation(),
 }
 
 const toolRecipe: CraftRecipe | undefined = RECIPES.find(r => r.requiredTool === 'quill_pen')

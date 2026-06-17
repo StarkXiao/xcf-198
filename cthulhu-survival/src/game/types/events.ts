@@ -56,6 +56,14 @@ export interface EventCondition {
   stepId?: string
 }
 
+export interface AlienationChoiceVariant {
+  minLevel?: number
+  text?: string
+  description?: string
+  consequences?: EventConsequence[]
+  successRate?: number
+}
+
 export interface EventChoice {
   id: string
   text: string
@@ -63,6 +71,7 @@ export interface EventChoice {
   requirements?: EventChoiceRequirement[]
   consequences: EventConsequence[]
   successRate?: number
+  alienationVariant?: AlienationChoiceVariant
 }
 
 export interface EventChoiceRequirement {
@@ -92,6 +101,9 @@ export type ConsequenceType =
   | 'text_feedback'
   | 'unlock_recipe'
   | 'change_reputation'
+  | 'change_alienation_level'
+  | 'change_permanent_corruption'
+  | 'trigger_alienation'
 
 export interface EventConsequence {
   type: ConsequenceType

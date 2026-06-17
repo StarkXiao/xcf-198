@@ -4,6 +4,7 @@ import { useGameStore } from '@stores/gameStore'
 import { storeToRefs } from 'pinia'
 import { getPollutionLevel } from '@game/systems/pollutionSystem'
 import { getPhaseDescription, getDayNightIcon } from '@game/systems/timeSystem'
+import { getAlienationStatus } from '@game/systems/alienationSystem'
 
 const gameStore = useGameStore()
 const { state, day } = storeToRefs(gameStore)
@@ -11,6 +12,11 @@ const { state, day } = storeToRefs(gameStore)
 const pollutionInfo = computed(() => {
   if (!state.value) return { level: '-', description: '', color: '#fff' }
   return getPollutionLevel(state.value.stats.pollution)
+})
+
+const alienationInfo = computed(() => {
+  if (!state.value) return { isActive: false, levelName: '-', description: '', color: '#fff', durationText: '', permanentCorruption: 0 }
+  return getAlienationStatus(state.value.stats.alienation)
 })
 
 function hpColor(v: number, max: number) {
@@ -86,6 +92,24 @@ function sanityColor(v: number, max: number) {
           ></div>
         </div>
         <span class="value" :style="{ color: pollutionInfo.color }">{{ pollutionInfo.level }}</span>
+      </div>
+
+      <div v-if="alienationInfo.isActive || alienationInfo.permanentCorruption > 0" class="stat-row alienation-row">
+        <span class="label">👁️ 异化</span>
+        <div class="stat-bar">
+          <div
+            class="stat-bar-fill alienation-fill"
+            :class="{ 'alienation-active': alienationInfo.isActive }"
+            :style="{
+              width: `${((state.stats.alienation.level + state.stats.alienation.permanentCorruption) / 5) * 100}%`,
+              background: alienationInfo.color,
+            }"
+          ></div>
+        </div>
+        <span class="value" :style="{ color: alienationInfo.color }">{{ alienationInfo.levelName }}</span>
+      </div>
+      <div v-if="alienationInfo.durationText" class="alienation-duration">
+        {{ alienationInfo.durationText }}
       </div>
 
       <div class="stat-row">
@@ -192,5 +216,31 @@ function sanityColor(v: number, max: number) {
   text-align: right;
   color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
+}
+
+.alienation-row {
+  animation: alienation-pulse 2s ease-in-out infinite;
+}
+
+.alienation-fill.alienation-active {
+  box-shadow: 0 0 8px currentColor;
+}
+
+.alienation-duration {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-align: right;
+  padding-right: 4px;
+  margin-top: -4px;
+  font-style: italic;
+}
+
+@keyframes alienation-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 </style>

@@ -1,4 +1,4 @@
-import type { MapTile, DayPhase, DangerInfo, LootQualityModifier, ActionCostModifier, EventWeightModifier } from '../types/game'
+import type { MapTile, DayPhase, DangerInfo, LootQualityModifier, ActionCostModifier, EventWeightModifier, AlienationBuffs } from '../types/game'
 import type { EventDangerCategory, GameEvent } from '../types/events'
 import type { LootTableEntry, LootResult } from '../types/items'
 import { clamp, weightedRandom, randomInt, chance } from '../utils/random'
@@ -193,13 +193,18 @@ export function selectWeightedEvent(events: GameEvent[]): GameEvent | null {
 export function rollLoot(
   lootTable: LootTableEntry[],
   dangerInfo: DangerInfo,
-  rolls: number = 1
+  rolls: number = 1,
+  alienationBuffs: AlienationBuffs = { maxHpBonus: 0, strengthBonus: 0, speedBonus: 0, pollutionResistanceBonus: 0, lootBonus: 0 }
 ): LootResult[] {
   const qualityModifier = calculateLootQualityModifier(dangerInfo)
   const results: LootResult[] = []
   const dangerValue = dangerInfo.value
+  const lootMultiplier = 1 + alienationBuffs.lootBonus
 
-  for (let i = 0; i < rolls; i++) {
+  const extraRolls = Math.floor(alienationBuffs.lootBonus * rolls * 0.5)
+  const totalRolls = rolls + extraRolls
+
+  for (let i = 0; i < totalRolls; i++) {
     const eligibleEntries = lootTable.filter(entry => {
       if (entry.minDanger !== undefined && dangerValue < entry.minDanger) return false
       if (entry.maxDanger !== undefined && dangerValue > entry.maxDanger) return false
@@ -215,7 +220,7 @@ export function rollLoot(
     if (!selected) continue
 
     let baseCount = randomInt(selected.minCount, selected.maxCount)
-    let count = Math.round(baseCount * qualityModifier.multiplier)
+    let count = Math.round(baseCount * qualityModifier.multiplier * lootMultiplier)
 
     const qualityBonus = qualityModifier.rarityBoost
 
@@ -231,37 +236,53 @@ export function rollLoot(
 
 export function calculateMovementCost(
   dangerInfo: DangerInfo,
-  baseCost: number = 1
+  baseCost: number = 1,
+  alienationBuffs: AlienationBuffs = { maxHpBonus: 0, strengthBonus: 0, speedBonus: 0, pollutionResistanceBonus: 0, lootBonus: 0 }
 ): number {
   const costModifier = calculateActionCostModifier(dangerInfo)
-  return Math.max(1, Math.ceil(baseCost * costModifier.movement))
+  const speedReduction = Math.max(0.5, 1 - alienationBuffs.speedBonus)
+  return Math.max(1, Math.ceil(baseCost * costModifier.movement * speedReduction))
 }
 
 export function calculateExplorationCost(
   dangerInfo: DangerInfo,
-  baseCost: number = 1
+  baseCost: number = 1,
+  alienationBuffs: AlienationBuffs = { maxHpBonus: 0, strengthBonus: 0, speedBonus: 0, pollutionResistanceBonus: 0, lootBonus: 0 }
 ): number {
   const costModifier = calculateActionCostModifier(dangerInfo)
-  return Math.max(1, Math.ceil(baseCost * costModifier.exploration))
+  const speedReduction = Math.max(0.5, 1 - alienationBuffs.speedBonus)
+  return Math.max(1, Math.ceil(baseCost * costModifier.exploration * speedReduction))
 }
 
 export function calculateCombatCost(
   dangerInfo: DangerInfo,
-  baseCost: number = 1
+  baseCost: number = 1,
+  alienationBuffs: AlienationBuffs = { maxHpBonus: 0, strengthBonus: 0, speedBonus: 0, pollutionResistanceBonus: 0, lootBonus: 0 }
 ): number {
   const costModifier = calculateActionCostModifier(dangerInfo)
-  return Math.max(1, Math.ceil(baseCost * costModifier.combat))
+  const speedReduction = Math.max(0.5, 1 - alienationBuffs.speedBonus)
+  return Math.max(1, Math.ceil(baseCost * costModifier.combat * speedReduction))
 }
 
-export function scaleSuccessRate(baseRate: number, dangerInfo: DangerInfo): number {
+export function scaleSuccessRate(
+  baseRate: number, 
+  dangerInfo: DangerInfo,
+  alienationBuffs: AlienationBuffs = { maxHpBonus: 0, strengthBonus: 0, speedBonus: 0, pollutionResistanceBonus: 0, lootBonus: 0 }
+): number {
   const dangerValue = dangerInfo.value
   const penalty = 1 - (dangerValue / 100) * 0.3
-  return clamp(baseRate * penalty, 0.05, 1.0)
+  const strengthBoost = 1 + alienationBuffs.strengthBonus * 0.5
+  return clamp(baseRate * penalty * strengthBoost, 0.05, 1.0)
 }
 
-export function scaleItemGainCount(baseCount: number, dangerInfo: DangerInfo): number {
+export function scaleItemGainCount(
+  baseCount: number, 
+  dangerInfo: DangerInfo,
+  alienationBuffs: AlienationBuffs = { maxHpBonus: 0, strengthBonus: 0, speedBonus: 0, pollutionResistanceBonus: 0, lootBonus: 0 }
+): number {
   const quality = calculateLootQualityModifier(dangerInfo)
-  return Math.max(1, Math.round(baseCount * quality.multiplier))
+  const lootMultiplier = 1 + alienationBuffs.lootBonus
+  return Math.max(1, Math.round(baseCount * quality.multiplier * lootMultiplier))
 }
 
 export function scaleStatChange(baseValue: number, dangerInfo: DangerInfo, statKind: string): number {
@@ -287,21 +308,23 @@ export function scaleStatChange(baseValue: number, dangerInfo: DangerInfo, statK
 
 export function generateBonusLoot(
   tileResources: string[],
-  dangerInfo: DangerInfo
+  dangerInfo: DangerInfo,
+  alienationBuffs: AlienationBuffs = { maxHpBonus: 0, strengthBonus: 0, speedBonus: 0, pollutionResistanceBonus: 0, lootBonus: 0 }
 ): { itemId: string; count: number }[] {
   const results: { itemId: string; count: number }[] = []
   if (tileResources.length === 0) return results
 
   const dangerValue = dangerInfo.value
-  const bonusChance = dangerValue / 100 * 0.4
+  const bonusChance = Math.min(0.9, (dangerValue / 100 * 0.4) + alienationBuffs.lootBonus * 0.15)
   if (!chance(bonusChance)) return results
 
   const quality = calculateLootQualityModifier(dangerInfo)
+  const lootMultiplier = 1 + alienationBuffs.lootBonus
   const pool = tileResources.filter(() => chance(0.6))
   if (pool.length === 0) return results
 
   for (const itemId of pool) {
-    const count = Math.max(1, Math.round(quality.multiplier))
+    const count = Math.max(1, Math.round(quality.multiplier * lootMultiplier))
     results.push({ itemId, count })
   }
 

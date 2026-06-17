@@ -71,6 +71,7 @@ import {
   getQuestStatus,
 } from '../systems/questChainSystem'
 import { QUEST_CHAINS } from '../data/questChains'
+import { getAlienationBuffs } from '../systems/alienationSystem'
 
 export interface EngineState {
   state: GameState
@@ -241,7 +242,8 @@ export class GameEngine {
 
     const dangerInfo = calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution)
     const lootQualityModifier = calculateLootQualityModifier(dangerInfo)
-    const actionCost = calculateMovementCost(dangerInfo, 1)
+    const alienationBuffs = getAlienationBuffs(this.state.stats.alienation)
+    const actionCost = calculateMovementCost(dangerInfo, 1, alienationBuffs)
 
     this.state.position = { x, y }
 
@@ -250,7 +252,7 @@ export class GameEngine {
       this.discoverNearby(x, y)
       messages.push(`你发现了新的区域：${tile.name}`)
 
-      const exploreLoot = generateBonusLoot(tile.resources, dangerInfo)
+      const exploreLoot = generateBonusLoot(tile.resources, dangerInfo, alienationBuffs)
       if (exploreLoot.length > 0) {
         for (const loot of exploreLoot) {
           this.state.inventory = addToInventory(this.state.inventory, loot.itemId, loot.count)
@@ -414,7 +416,8 @@ export class GameEngine {
     }
 
     if (result.success && tile && dangerInfo) {
-      const bonusItems = generateBonusLoot(tile.resources, dangerInfo)
+      const alienationBuffs = getAlienationBuffs(this.state.stats.alienation)
+      const bonusItems = generateBonusLoot(tile.resources, dangerInfo, alienationBuffs)
       if (bonusItems.length > 0) {
         for (const bi of bonusItems) {
           this.state.inventory = addToInventory(this.state.inventory, bi.itemId, bi.count)

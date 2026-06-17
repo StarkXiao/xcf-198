@@ -1,5 +1,5 @@
 import type { GameEvent, EventChoice, EventConsequence, QuestState } from '../types/events'
-import type { PlayerStats, GameState, DangerInfo } from '../types/game'
+import type { PlayerStats, GameState, DangerInfo, AlienationBuffs, AlienationDebuffs } from '../types/game'
 import type { InventoryItem } from '../types/items'
 import type { Identity, SkillEffect } from '../types/identity'
 import type { ReputationMap } from '../types/faction'
@@ -13,7 +13,7 @@ import { scaleSuccessRate, scaleItemGainCount, scaleStatChange } from './dangerS
 import { isItemBroken, getDurabilityModifier, applyDurabilityWear, isItemWithDurability } from './durabilitySystem'
 import { ITEMS } from '../data/items'
 import { getQuestStatus, isStepReached, getQuestEventPoolEffects } from './questChainSystem'
-import { modifyAlienationLevel, modifyPermanentCorruption, triggerAlienation } from './alienationSystem'
+import { modifyAlienationLevel, modifyPermanentCorruption, triggerAlienation, getAlienationBuffs, getAlienationDebuffs } from './alienationSystem'
 
 export interface EventResult {
   event: GameEvent
@@ -240,12 +240,14 @@ export function executeEventChoice(
   if (!originalChoice) return null
 
   const choice = getEffectiveChoice(originalChoice, state.stats)
+  const alienationBuffs = getAlienationBuffs(state.stats.alienation)
+  const alienationDebuffs = getAlienationDebuffs(state.stats.alienation)
 
   let success: boolean
   if (choice.successRate !== undefined) {
     let adjustedRate = dangerInfo
-      ? scaleSuccessRate(choice.successRate, dangerInfo)
-      : choice.successRate
+      ? scaleSuccessRate(choice.successRate, dangerInfo, alienationBuffs)
+      : choice.successRate * (1 + alienationBuffs.strengthBonus * 0.5)
 
     if (choice.requirements) {
       for (const req of choice.requirements) {
@@ -279,7 +281,7 @@ export function executeEventChoice(
   const consequences = success ? choice.consequences : getFailureConsequences(choice)
 
   for (const cons of consequences) {
-    const result = applyConsequence(cons, stats, inventory, flags, reputation, identity, dangerInfo, growthEffects)
+    const result = applyConsequence(cons, stats, inventory, flags, reputation, identity, dangerInfo, growthEffects, alienationBuffs, alienationDebuffs)
     stats = result.stats
     inventory = result.inventory
     flags = result.flags
@@ -360,6 +362,8 @@ function applyConsequence(
   identity: Identity,
   dangerInfo: DangerInfo | null = null,
   growthEffects: SkillEffect[] = [],
+  alienationBuffs: AlienationBuffs = { maxHpBonus: 0, strengthBonus: 0, speedBonus: 0, pollutionResistanceBonus: 0, lootBonus: 0 },
+  alienationDebuffs: AlienationDebuffs = { sanityDrainPerPhase: 0, maxSanityReduction: 0, hungerIncrease: 0, socialPenalty: 0 },
 ): {
   stats: PlayerStats
   inventory: InventoryItem[]
@@ -379,11 +383,14 @@ function applyConsequence(
       if (cons.itemId) {
         let count = cons.count || 1
         if (dangerInfo) {
-          count = scaleItemGainCount(count, dangerInfo)
+          count = scaleItemGainCount(count, dangerInfo, alienationBuffs)
+        } else {
+          count = Math.max(1, Math.round(count * (1 + alienationBuffs.lootBonus)))
         }
         result.inventory = addToInventory(inventory, cons.itemId, count)
-        if (dangerInfo && count > (cons.count || 1)) {
-          result.message = `危险区域的丰厚回报！获得 x${count}`
+        const originalCount = cons.count || 1
+        if (count > originalCount) {
+          result.message = `获得 x${count}${alienationBuffs.lootBonus > 0 ? '（异化加成）' : '危险区域的丰厚回报！'}`
         }
       }
       break
@@ -455,8 +462,11 @@ function applyConsequence(
       break
     case 'change_reputation':
       if (cons.factionId && cons.value) {
-        result.reputation = modifyReputation(reputation, cons.factionId, cons.value)
+        result.reputation = modifyReputation(reputation, cons.factionId, cons.value, alienationDebuffs.socialPenalty)
         result.message = getReputationChangeDescription(cons.factionId, cons.value)
+        if (alienationDebuffs.socialPenalty > 0 && cons.value > 0) {
+          result.message = `${result.message}（社交惩罚削弱了正面效果）`
+        }
       }
       break
     case 'change_alienation_level':

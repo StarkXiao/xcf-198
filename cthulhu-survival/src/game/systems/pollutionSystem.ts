@@ -1,7 +1,7 @@
 import type { PlayerStats } from '../types/game'
 import type { Identity, SkillEffect } from '../types/identity'
 import { clamp } from '../utils/random'
-import { createInitialAlienation, canTriggerAlienation, triggerAlienation, applyAlienationPhaseEffects } from './alienationSystem'
+import { createInitialAlienation, canTriggerAlienation, triggerAlienation, applyAlienationPhaseEffects, getAlienationBuffs } from './alienationSystem'
 
 export function createInitialStats(identity: Identity): PlayerStats {
   const s = identity.baseStats
@@ -35,8 +35,12 @@ export function applyPollutionEffect(
     [...identity.skills.map(s => s.effect), ...growthEffects],
     'reduce_pollution_gain',
   )
+  
+  const alienationBuffs = getAlienationBuffs(stats.alienation)
+  const totalPollutionReduction = pollutionReduction + alienationBuffs.pollutionResistanceBonus
+  
   if (actualGain > 0) {
-    actualGain = actualGain * (1 - pollutionReduction)
+    actualGain = actualGain * (1 - Math.min(totalPollutionReduction, 0.8))
   }
 
   const newPollution = clamp(stats.pollution + actualGain, 0, 100)
@@ -71,6 +75,7 @@ export function applyPhaseEffects(
 ): PlayerStats {
   let newStats = { ...stats }
   const allEffects = [...identity.skills.map(s => s.effect), ...growthEffects]
+  const alienationBuffs = getAlienationBuffs(newStats.alienation)
 
   const hungerReduction = aggregateEffectValue(allEffects, 'reduce_hunger_rate')
   const hungerDrain = Math.round(10 * (1 - hungerReduction))
@@ -82,18 +87,21 @@ export function applyPhaseEffects(
 
   if (isNight) {
     newStats.sanity = clamp(newStats.sanity - 5, 0, newStats.maxSanity)
-    newStats.pollution = clamp(newStats.pollution + 3, 0, 100)
+    const nightPollutionGain = Math.round(3 * (1 - Math.min(alienationBuffs.pollutionResistanceBonus, 0.8)))
+    newStats.pollution = clamp(newStats.pollution + nightPollutionGain, 0, 100)
   } else {
     newStats.sanity = clamp(newStats.sanity + 3 + sanityBonus, 0, newStats.maxSanity)
   }
 
   if (newStats.hunger <= 0) {
-    newStats.hp = clamp(newStats.hp - 10, 0, newStats.maxHp)
+    const hungerDamage = Math.max(2, Math.round(10 * (1 - alienationBuffs.strengthBonus * 0.5)))
+    newStats.hp = clamp(newStats.hp - hungerDamage, 0, newStats.maxHp)
     newStats.sanity = clamp(newStats.sanity - 5, 0, newStats.maxSanity)
   }
 
   if (newStats.energy <= 0) {
-    newStats.hp = clamp(newStats.hp - 5, 0, newStats.maxHp)
+    const energyDamage = Math.max(1, Math.round(5 * (1 - alienationBuffs.strengthBonus * 0.5)))
+    newStats.hp = clamp(newStats.hp - energyDamage, 0, newStats.maxHp)
     newStats.sanity = clamp(newStats.sanity - 3, 0, newStats.maxSanity)
   }
 
@@ -112,8 +120,13 @@ export function modifyHp(stats: PlayerStats, amount: number, identity: Identity,
     [...identity.skills.map(s => s.effect), ...growthEffects],
     'reduce_damage_taken',
   )
+  const alienationBuffs = getAlienationBuffs(stats.alienation)
+  
   if (amount < 0) {
-    actualAmount = amount * (1 - damageReduction)
+    const totalDamageReduction = damageReduction + alienationBuffs.strengthBonus * 0.5
+    actualAmount = amount * (1 - Math.min(totalDamageReduction, 0.7))
+  } else {
+    actualAmount = amount * (1 + alienationBuffs.strengthBonus * 0.3)
   }
   return {
     ...stats,

@@ -11,19 +11,28 @@ export function modifyReputation(
   reputation: ReputationMap,
   factionId: FactionId,
   delta: number,
+  alienationSocialPenalty: number = 0,
 ): ReputationMap {
   const faction = getFactionById(factionId)
   if (!faction) return reputation
 
+  let actualDelta = delta
+  
+  if (actualDelta > 0) {
+    actualDelta = Math.round(actualDelta * Math.max(0.3, 1 - alienationSocialPenalty * 0.05))
+  } else {
+    actualDelta = Math.round(actualDelta * (1 + alienationSocialPenalty * 0.08))
+  }
+
   const newReputation = { ...reputation }
   newReputation[factionId] = clamp(
-    (newReputation[factionId] || 0) + delta,
+    (newReputation[factionId] || 0) + actualDelta,
     MIN_REPUTATION,
     MAX_REPUTATION,
   )
 
-  if (delta > 0 && faction.opposedFaction !== factionId) {
-    const opposedDelta = -Math.round(delta * OPPOSED_FACTION_PENALTY_RATE)
+  if (actualDelta > 0 && faction.opposedFaction !== factionId) {
+    const opposedDelta = -Math.round(Math.abs(actualDelta) * OPPOSED_FACTION_PENALTY_RATE * (1 + alienationSocialPenalty * 0.03))
     newReputation[faction.opposedFaction] = clamp(
       (newReputation[faction.opposedFaction] || 0) + opposedDelta,
       MIN_REPUTATION,

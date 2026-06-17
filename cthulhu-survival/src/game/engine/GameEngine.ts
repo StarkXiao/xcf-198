@@ -3,6 +3,7 @@ import type { Identity, SkillEffect } from '../types/identity'
 import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { GameEvent, Ending, EventChoice } from '../types/events'
 import type { GrowthTreeProgress, GrowthNode } from '../types/growthTree'
+import type { FactionId } from '../types/faction'
 import { MAP_TILES, getTileAt } from '../data/events'
 import { ITEMS } from '../data/items'
 import {
@@ -43,6 +44,20 @@ import {
   calculateLootQualityModifier,
   generateBonusLoot,
 } from '../systems/dangerSystem'
+import {
+  reconTile,
+  reconArea,
+  disarmTrap,
+  lootHidden,
+  harvestSpecialResource,
+  triggerTrapOnEnter,
+  type ReconResult,
+  type DisarmResult,
+  type LootHiddenResult,
+  type HarvestResult,
+  type ReconTarget,
+} from '../systems/scoutingSystem'
+import { applyDurabilityWear, isItemBroken } from '../systems/durabilitySystem'
 import {
   createInitialGrowthProgress,
   getGrowthTreeForIdentity,
@@ -260,6 +275,20 @@ export class GameEngine {
         const lootSummary = exploreLoot.map(l => `${l.itemId}x${l.count}`).join(', ')
         messages.push(`探索收获：${lootSummary}（危险度加成 x${lootQualityModifier.multiplier.toFixed(1)}）`)
       }
+    }
+
+    const trapResult = triggerTrapOnEnter(tile, this.identity, this.state.inventory)
+    if (trapResult.triggered) {
+      messages.push(...trapResult.messages)
+      this.state.stats.hp = clamp(this.state.stats.hp - trapResult.damage, 0, this.state.stats.maxHp)
+      if (trapResult.sanityDamage > 0) {
+        this.state.stats.sanity = clamp(this.state.stats.sanity - trapResult.sanityDamage, 0, this.state.stats.maxSanity)
+      }
+      if (trapResult.pollutionGain > 0) {
+        this.state.stats = applyPollutionEffect(this.state.stats, trapResult.pollutionGain, this.identity, this.getGrowthEffects())
+      }
+    } else if (trapResult.messages.length > 0) {
+      messages.push(...trapResult.messages)
     }
 
     messages.push(`${dangerInfo.icon} ${dangerInfo.description}`)
@@ -698,6 +727,307 @@ export class GameEngine {
 
   canUseActiveGrowthNode(nodeId: string): boolean {
     return canUseActiveNode(nodeId, this.growthProgress)
+  }
+
+  reconCurrentTile(target: ReconTarget = 'all'): ReconResult {
+    const tile = this.getCurrentTile()
+    if (!tile) {
+      return {
+        success: false,
+        tileId: '',
+        revealedHidden: null,
+        revealedTrap: null,
+        revealedSpecial: null,
+        messages: ['你不在任何可侦查的区域'],
+        energyCost: 0,
+        sanityCost: 0,
+      }
+    }
+
+    const hasPotion = this.state.flags['scouting_potion_active'] === true
+    const result = reconTile(tile, this.identity, this.state.inventory, this.state.stats, target, hasPotion)
+
+    if (result.energyCost > 0) {
+      this.state.stats.energy = clamp(this.state.stats.energy - result.energyCost, 0, 100)
+    }
+    if (result.sanityCost > 0) {
+      this.state.stats.sanity = clamp(this.state.stats.sanity - result.sanityCost, 0, this.state.stats.maxSanity)
+    }
+
+    if (result.success) {
+      const actionResult = consumeAction(this.state.time, 1)
+      this.state.time = actionResult.time
+      if (actionResult.phaseChanged) {
+        this.handlePhaseChange()
+      }
+    }
+
+    const ending = checkForImmediateEnding(this.state)
+    if (ending) {
+      this.state.status = 'ending'
+      this.state.currentEndingId = ending.id
+    }
+
+    return result
+  }
+
+  reconSurroundingArea(): ReconResult[] {
+    const hasPotion = this.state.flags['scouting_potion_active'] === true
+    const results = reconArea(
+      this.state.position.x,
+      this.state.position.y,
+      this.identity,
+      this.state.inventory,
+      this.state.stats,
+      this.state.discoveredTiles,
+      hasPotion,
+    )
+
+    let totalEnergyCost = 0
+    for (const result of results) {
+      totalEnergyCost += result.energyCost
+    }
+
+    if (totalEnergyCost > 0) {
+      const avgEnergy = Math.round(totalEnergyCost / Math.max(1, results.length))
+      this.state.stats.energy = clamp(this.state.stats.energy - avgEnergy, 0, 100)
+    }
+
+    if (results.length > 0) {
+      const actionResult = consumeAction(this.state.time, 1)
+      this.state.time = actionResult.time
+      if (actionResult.phaseChanged) {
+        this.handlePhaseChange()
+      }
+    }
+
+    const ending = checkForImmediateEnding(this.state)
+    if (ending) {
+      this.state.status = 'ending'
+      this.state.currentEndingId = ending.id
+    }
+
+    return results
+  }
+
+  disarmCurrentTrap(): DisarmResult {
+    const tile = this.getCurrentTile()
+    if (!tile) {
+      return {
+        success: false,
+        tileId: '',
+        trapDisarmed: false,
+        trapTriggered: false,
+        damage: 0,
+        messages: ['你不在任何可操作的区域'],
+      }
+    }
+
+    const result = disarmTrap(tile, this.identity, this.state.inventory, this.state.stats)
+
+    if (result.damage > 0) {
+      this.state.stats.hp = clamp(this.state.stats.hp - result.damage, 0, this.state.stats.maxHp)
+    }
+
+    if (result.trapDisarmed) {
+      const actionResult = consumeAction(this.state.time, 1)
+      this.state.time = actionResult.time
+      if (actionResult.phaseChanged) {
+        this.handlePhaseChange()
+      }
+    }
+
+    const ending = checkForImmediateEnding(this.state)
+    if (ending) {
+      this.state.status = 'ending'
+      this.state.currentEndingId = ending.id
+    }
+
+    return result
+  }
+
+  lootCurrentHidden(): LootHiddenResult {
+    const tile = this.getCurrentTile()
+    if (!tile) {
+      return {
+        success: false,
+        tileId: '',
+        looted: false,
+        items: [],
+        flagsSet: [],
+        messages: ['你不在任何可操作的区域'],
+      }
+    }
+
+    const result = lootHidden(tile, this.identity, this.state.inventory, this.state.stats)
+
+    if (result.looted) {
+      for (const item of result.items) {
+        this.state.inventory = addToInventory(this.state.inventory, item.itemId, item.count)
+      }
+      for (const flag of result.flagsSet) {
+        this.state.flags[flag] = true
+      }
+
+      const actionResult = consumeAction(this.state.time, 1)
+      this.state.time = actionResult.time
+      if (actionResult.phaseChanged) {
+        this.handlePhaseChange()
+      }
+    }
+
+    const ending = checkForImmediateEnding(this.state)
+    if (ending) {
+      this.state.status = 'ending'
+      this.state.currentEndingId = ending.id
+    }
+
+    return result
+  }
+
+  harvestCurrentSpecialResource(): HarvestResult {
+    const tile = this.getCurrentTile()
+    if (!tile) {
+      return {
+        success: false,
+        tileId: '',
+        harvested: false,
+        rewards: [],
+        messages: ['你不在任何可操作的区域'],
+      }
+    }
+
+    const result = harvestSpecialResource(tile, this.identity, this.state.inventory, this.state.stats)
+
+    if (result.harvested) {
+      for (const reward of result.rewards) {
+        this.state.inventory = addToInventory(this.state.inventory, reward.itemId, reward.count)
+      }
+      if (result.reputationGain) {
+        const factionId = result.reputationGain.factionId as FactionId
+        this.state.reputation[factionId] = Math.min(
+          100,
+          (this.state.reputation[factionId] || 0) + result.reputationGain.reputation,
+        )
+      }
+
+      if (tile.specialResource?.harvestCost) {
+        this.state.stats.energy = clamp(
+          this.state.stats.energy - tile.specialResource.harvestCost.energy,
+          0,
+          100,
+        )
+        if (tile.specialResource.harvestCost.sanity) {
+          this.state.stats.sanity = clamp(
+            this.state.stats.sanity - tile.specialResource.harvestCost.sanity,
+            0,
+            this.state.stats.maxSanity,
+          )
+        }
+      }
+
+      const actionResult = consumeAction(this.state.time, 1)
+      this.state.time = actionResult.time
+      if (actionResult.phaseChanged) {
+        this.handlePhaseChange()
+      }
+    }
+
+    const ending = checkForImmediateEnding(this.state)
+    if (ending) {
+      this.state.status = 'ending'
+      this.state.currentEndingId = ending.id
+    }
+
+    return result
+  }
+
+  getAvailableScoutingActions(): {
+    canRecon: boolean
+    canDisarm: boolean
+    canLootHidden: boolean
+    canHarvestSpecial: boolean
+    hasRevealedHidden: boolean
+    hasRevealedTrap: boolean
+    hasRevealedSpecial: boolean
+  } {
+    const tile = this.getCurrentTile()
+    if (!tile) {
+      return {
+        canRecon: false,
+        canDisarm: false,
+        canLootHidden: false,
+        canHarvestSpecial: false,
+        hasRevealedHidden: false,
+        hasRevealedTrap: false,
+        hasRevealedSpecial: false,
+      }
+    }
+
+    const hasEnergy = this.state.stats.energy >= 10
+    const hasActions = this.state.time.actionsLeft > 0
+
+    return {
+      canRecon: hasEnergy && hasActions,
+      canDisarm: !!(tile.trap?.revealed && !tile.trap.disarmed && !tile.trap.triggered) && hasActions,
+      canLootHidden: !!(tile.hidden?.revealed && !tile.hidden.looted) && hasActions,
+      canHarvestSpecial: !!(tile.specialResource?.revealed && !tile.specialResource.harvested) && hasEnergy && hasActions,
+      hasRevealedHidden: !!(tile.hidden?.revealed && !tile.hidden.looted),
+      hasRevealedTrap: !!(tile.trap?.revealed && !tile.trap.triggered && !tile.trap.disarmed),
+      hasRevealedSpecial: !!(tile.specialResource?.revealed && !tile.specialResource.harvested),
+    }
+  }
+
+  useScoutingItem(itemId: string): { success: boolean; message: string; duration?: number } {
+    const idx = this.state.inventory.findIndex(i => i.itemId === itemId)
+    if (idx === -1) {
+      return { success: false, message: '物品不存在' }
+    }
+
+    const itemData = ITEMS[itemId]
+    if (!itemData) {
+      return { success: false, message: '物品数据错误' }
+    }
+
+    const scoutingItems = ['telescope', 'divination_rod', 'compass', 'trap_detector', 'eye_of_insight']
+    if (!scoutingItems.includes(itemId)) {
+      return { success: false, message: '该物品不是侦查道具' }
+    }
+
+    if (isItemBroken(this.state.inventory, itemId)) {
+      return { success: false, message: `${itemData.name} 已经损坏，需要先维修` }
+    }
+
+    if (itemData.maxDurability !== undefined && itemData.durabilityCostPerUse !== undefined) {
+      const newInventory = applyDurabilityWear(this.state.inventory, itemId, itemData.durabilityCostPerUse)
+      this.updateInventory(newInventory)
+    }
+
+    return {
+      success: true,
+      message: `使用了 ${itemData.name}，侦查能力提升！`,
+    }
+  }
+
+  useScoutingPotion(): { success: boolean; message: string } {
+    const idx = this.state.inventory.findIndex(i => i.itemId === 'scouting_potion')
+    if (idx === -1) {
+      return { success: false, message: '你没有鹰眼药剂' }
+    }
+
+    const itemData = ITEMS['scouting_potion']
+    this.state.inventory = removeFromInventory(this.state.inventory, 'scouting_potion', 1)
+
+    this.state.stats.sanity = clamp(this.state.stats.sanity + (itemData.sanityOnUse || 0), 0, this.state.stats.maxSanity)
+    this.state.stats.energy = clamp(this.state.stats.energy + (itemData.energyOnUse || 0), 0, 100)
+
+    this.state.flags['scouting_potion_active'] = true
+    this.state.flags['scouting_potion_turns'] = 3
+
+    return {
+      success: true,
+      message: '你喝下了鹰眼药剂，感官变得异常敏锐！侦查能力在 3 回合内大幅提升。',
+    }
   }
 
   serialize(): SerializedSave {

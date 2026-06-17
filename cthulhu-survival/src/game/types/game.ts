@@ -80,6 +80,43 @@ export interface PlayerStats {
 
 export type TileType = 'forest' | 'ruins' | 'lake' | 'cave' | 'village' | 'shrine' | 'camp'
 
+export type TileHiddenType = 'hidden_loot' | 'hidden_passage' | 'hidden_knowledge' | null
+export type TileTrapType = 'spike_trap' | 'poison_trap' | 'sanity_trap' | 'pollution_trap' | null
+export type TileSpecialResourceType = 'ancient_cache' | 'sacred_site' | 'abyssal_deposit' | 'watchers_archive' | null
+
+export interface TileHiddenInfo {
+  type: TileHiddenType
+  name: string
+  description: string
+  revealed: boolean
+  looted: boolean
+  lootItems?: { itemId: string; count: number }[]
+  flags?: string[]
+}
+
+export interface TileTrapInfo {
+  type: TileTrapType
+  name: string
+  description: string
+  revealed: boolean
+  disarmed: boolean
+  triggered: boolean
+  damage: number
+  sanityDamage?: number
+  pollutionGain?: number
+}
+
+export interface TileSpecialResourceInfo {
+  type: TileSpecialResourceType
+  name: string
+  description: string
+  revealed: boolean
+  harvested: boolean
+  harvestCost: { energy: number; sanity?: number }
+  rewards: { itemId: string; count: number }[]
+  factionBonus?: { factionId: string; reputation: number }
+}
+
 export interface MapTile {
   id: string
   x: number
@@ -92,6 +129,9 @@ export interface MapTile {
   resources: string[]
   hasEvent: boolean
   eventId?: string
+  hidden?: TileHiddenInfo
+  trap?: TileTrapInfo
+  specialResource?: TileSpecialResourceInfo
 }
 
 export interface Position {

@@ -36,6 +36,7 @@ const mockIdentity: Identity = {
   startInventory: [],
   skills: [],
   startPosition: { x: 0, y: 0 },
+  scoutingSpecialty: null,
 }
 
 const defaultStats: PlayerStats = {

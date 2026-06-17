@@ -15,6 +15,18 @@ export interface Identity {
   startInventory: string[]
   skills: IdentitySkill[]
   startPosition: { x: number; y: number }
+  scoutingSpecialty: IdentityScoutingSpecialty
+}
+
+export interface ScoutingBonuses {
+  hiddenChanceBonus: number
+  trapChanceBonus: number
+  resourceChanceBonus: number
+  disarmChanceBonus: number
+  revealRadiusBonus: number
+  energyCostReduction: number
+  hiddenLootMultiplier: number
+  specialResourceBonus: number
 }
 
 export interface IdentitySkill {
@@ -34,6 +46,15 @@ export type SkillEffectType =
   | 'reduce_damage_taken'
   | 'start_with_item'
   | 'reveal_map_area'
+  | 'scouting_hidden_bonus'
+  | 'scouting_trap_bonus'
+  | 'scouting_resource_bonus'
+  | 'trap_disarm_bonus'
+  | 'reveal_radius_increase'
+  | 'scouting_energy_cost_reduction'
+  | 'identity_specific_scouting'
+
+export type IdentityScoutingSpecialty = 'scholar' | 'detective' | 'priest' | 'hunter' | null
 
 export interface SkillEffect {
   type: SkillEffectType

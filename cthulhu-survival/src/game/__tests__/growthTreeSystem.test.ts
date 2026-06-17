@@ -35,6 +35,7 @@ const mockIdentity: Identity = {
   startInventory: [],
   skills: [],
   startPosition: { x: 4, y: 3 },
+  scoutingSpecialty: 'scholar',
 }
 
 function createMockState(): GameState {

@@ -54,6 +54,7 @@ export class GameScene extends Phaser.Scene {
   private tileTexts: Map<string, Phaser.GameObjects.Text> = new Map()
   private tileIcons: Map<string, Phaser.GameObjects.Text> = new Map()
   private tileDangerBadges: Map<string, Phaser.GameObjects.Text> = new Map()
+  private tileScoutingBadges: Map<string, Phaser.GameObjects.Text> = new Map()
   private playerSprite: Phaser.GameObjects.Container | null = null
   private playerIcon: Phaser.GameObjects.Text | null = null
   private nightOverlay: Phaser.GameObjects.Graphics | null = null
@@ -136,6 +137,13 @@ export class GameScene extends Phaser.Scene {
     dangerBadge.setVisible(false)
     dangerBadge.setDepth(5)
     this.tileDangerBadges.set(key, dangerBadge)
+
+    const scoutingBadge = this.add.text(x + 8, y + 8, '', {
+      fontSize: '16px',
+    }).setOrigin(0, 0)
+    scoutingBadge.setVisible(false)
+    scoutingBadge.setDepth(5)
+    this.tileScoutingBadges.set(key, scoutingBadge)
   }
 
   private paintTile(
@@ -186,6 +194,35 @@ export class GameScene extends Phaser.Scene {
       badge.setText(`${dangerInfo.icon}`)
       badge.setAlpha(dangerInfo.value > 15 ? 1 : 0.5)
       badge.setVisible(true)
+    }
+
+    const scoutingBadge = this.tileScoutingBadges.get(key)
+    if (scoutingBadge && discovered) {
+      let scoutingIcon = ''
+      if (tile.trap?.revealed && !tile.trap.triggered && !tile.trap.disarmed) {
+        scoutingIcon = '⚠️'
+      } else if (tile.trap?.disarmed) {
+        scoutingIcon = '✅'
+      } else if (tile.trap?.triggered) {
+        scoutingIcon = '💥'
+      } else if (tile.hidden?.revealed && !tile.hidden.looted) {
+        scoutingIcon = '🔍'
+      } else if (tile.hidden?.looted) {
+        scoutingIcon = '📦'
+      } else if (tile.specialResource?.revealed && !tile.specialResource.harvested) {
+        scoutingIcon = '✨'
+      } else if (tile.specialResource?.harvested) {
+        scoutingIcon = '🎁'
+      }
+
+      if (scoutingIcon) {
+        scoutingBadge.setText(scoutingIcon)
+        scoutingBadge.setVisible(true)
+      } else {
+        scoutingBadge.setVisible(false)
+      }
+    } else if (scoutingBadge) {
+      scoutingBadge.setVisible(false)
     }
   }
 
@@ -268,6 +305,21 @@ export class GameScene extends Phaser.Scene {
         text.setStyle({ color: this.discoveredTiles.has(tile.id) ? '#e8e8f0' : '#5e5e7a' })
       }
     }
+  }
+
+  refreshTileScoutingInfo(tileId: string) {
+    const tile = MAP_TILES.find(t => t.id === tileId)
+    if (!tile) return
+    const key = this.tileKey(tile.x, tile.y)
+    const graphics = this.tileGraphics.get(key)
+    if (!graphics) return
+
+    graphics.clear()
+    this.paintTile(graphics, tile, false, this.isAdjacent(tile), this.discoveredTiles.has(tile.id))
+  }
+
+  refreshAllScoutingInfo() {
+    this.redrawAllTiles()
   }
 
   private isAdjacent(tile: MapTile): boolean {

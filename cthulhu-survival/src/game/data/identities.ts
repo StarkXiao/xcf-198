@@ -15,7 +15,7 @@ export const IDENTITIES: Identity[] = [
       startHunger: 60,
       startEnergy: 100,
     },
-    startInventory: ['old_book', 'quill_pen', 'dried_herb', 'dried_herb'],
+    startInventory: ['old_book', 'quill_pen', 'dried_herb', 'dried_herb', 'divination_rod'],
     skills: [
       {
         id: 'ancient_tongue',
@@ -31,8 +31,16 @@ export const IDENTITIES: Identity[] = [
         type: 'passive',
         effect: { type: 'bonus_craft_success', value: 0.15 },
       },
+      {
+        id: 'arcane_sense',
+        name: '神秘感知',
+        description: '侦查隐藏知识时成功率 +40%，特殊资源收益 +25%',
+        type: 'passive',
+        effect: { type: 'identity_specific_scouting', value: 0.4 },
+      },
     ],
     startPosition: { x: 4, y: 3 },
+    scoutingSpecialty: 'scholar',
   },
   {
     id: 'detective',
@@ -48,7 +56,7 @@ export const IDENTITIES: Identity[] = [
       startHunger: 70,
       startEnergy: 100,
     },
-    startInventory: ['pocket_watch', 'revolver', 'bullet', 'bullet', 'bullet'],
+    startInventory: ['pocket_watch', 'revolver', 'bullet', 'bullet', 'bullet', 'trap_detector'],
     skills: [
       {
         id: 'sharp_senses',
@@ -64,8 +72,16 @@ export const IDENTITIES: Identity[] = [
         type: 'passive',
         effect: { type: 'reduce_damage_taken', value: 0.2 },
       },
+      {
+        id: 'trap_specialist',
+        name: '陷阱专家',
+        description: '陷阱察觉率 +45%，解除陷阱成功率 +40%，陷阱伤害减免 +30%',
+        type: 'passive',
+        effect: { type: 'identity_specific_scouting', value: 0.45 },
+      },
     ],
     startPosition: { x: 3, y: 4 },
+    scoutingSpecialty: 'detective',
   },
   {
     id: 'priest',
@@ -81,7 +97,7 @@ export const IDENTITIES: Identity[] = [
       startHunger: 50,
       startEnergy: 100,
     },
-    startInventory: ['holy_symbol', 'prayer_book', 'holy_water', 'blessed_bread'],
+    startInventory: ['holy_symbol', 'prayer_book', 'holy_water', 'blessed_bread', 'compass'],
     skills: [
       {
         id: 'divine_grace',
@@ -97,8 +113,16 @@ export const IDENTITIES: Identity[] = [
         type: 'passive',
         effect: { type: 'reduce_pollution_gain', value: 0.5 },
       },
+      {
+        id: 'sacred_sight',
+        name: '神圣视力',
+        description: '圣地与邪恶之物感知率 +40%，污染类陷阱效果 -50%，特殊资源：神圣地点收益 +35%',
+        type: 'passive',
+        effect: { type: 'identity_specific_scouting', value: 0.4 },
+      },
     ],
     startPosition: { x: 5, y: 2 },
+    scoutingSpecialty: 'priest',
   },
   {
     id: 'hunter',
@@ -114,7 +138,7 @@ export const IDENTITIES: Identity[] = [
       startHunger: 80,
       startEnergy: 100,
     },
-    startInventory: ['hunting_knife', 'bow', 'arrow', 'arrow', 'arrow', 'rope'],
+    startInventory: ['hunting_knife', 'bow', 'arrow', 'arrow', 'arrow', 'rope', 'telescope'],
     skills: [
       {
         id: 'wilderness_survival',
@@ -130,7 +154,15 @@ export const IDENTITIES: Identity[] = [
         type: 'passive',
         effect: { type: 'increase_action_points', value: 1 },
       },
+      {
+        id: 'pathfinder',
+        name: '寻路者',
+        description: '侦查范围 +1，隐藏宝物发现率 +35%，自然资源收益 +30%，侦查能量消耗 -25%',
+        type: 'passive',
+        effect: { type: 'identity_specific_scouting', value: 0.35 },
+      },
     ],
     startPosition: { x: 2, y: 2 },
+    scoutingSpecialty: 'hunter',
   },
 ]

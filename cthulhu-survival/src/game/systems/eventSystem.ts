@@ -1,7 +1,7 @@
 import type { GameEvent, EventChoice, EventConsequence } from '../types/events'
 import type { PlayerStats, GameState, DangerInfo } from '../types/game'
 import type { InventoryItem } from '../types/items'
-import type { Identity } from '../types/identity'
+import type { Identity, SkillEffect } from '../types/identity'
 import type { ReputationMap } from '../types/faction'
 import { EVENTS, getEventById } from '../data/events'
 import { chance } from '../utils/random'
@@ -148,6 +148,7 @@ export function executeEventChoice(
   state: GameState,
   identity: Identity,
   dangerInfo: DangerInfo | null = null,
+  growthEffects: SkillEffect[] = [],
 ): EventResult | null {
   const choice = event.choices.find(c => c.id === choiceId)
   if (!choice) return null
@@ -190,7 +191,7 @@ export function executeEventChoice(
   const consequences = success ? choice.consequences : getFailureConsequences(choice)
 
   for (const cons of consequences) {
-    const result = applyConsequence(cons, stats, inventory, flags, reputation, identity, dangerInfo)
+    const result = applyConsequence(cons, stats, inventory, flags, reputation, identity, dangerInfo, growthEffects)
     stats = result.stats
     inventory = result.inventory
     flags = result.flags
@@ -270,6 +271,7 @@ function applyConsequence(
   reputation: ReputationMap,
   identity: Identity,
   dangerInfo: DangerInfo | null = null,
+  growthEffects: SkillEffect[] = [],
 ): {
   stats: PlayerStats
   inventory: InventoryItem[]
@@ -308,7 +310,7 @@ function applyConsequence(
       if (dangerInfo) {
         value = scaleStatChange(value, dangerInfo, 'hp')
       }
-      result.stats = modifyHp(stats, value, identity)
+      result.stats = modifyHp(stats, value, identity, growthEffects)
       break
     }
     case 'change_sanity': {
@@ -324,7 +326,7 @@ function applyConsequence(
       if (dangerInfo) {
         value = scaleStatChange(value, dangerInfo, 'pollution')
       }
-      result.stats = applyPollutionEffect(stats, value, identity)
+      result.stats = applyPollutionEffect(stats, value, identity, growthEffects)
       break
     }
     case 'change_hunger': {

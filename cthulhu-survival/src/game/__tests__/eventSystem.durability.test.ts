@@ -5,6 +5,8 @@ import { ITEMS } from '../data/items'
 import type { InventoryItem } from '../types/items'
 import type { Identity } from '../types/identity'
 import type { GameState, PlayerStats } from '../types/game'
+import { createDefaultReputation } from '../systems/reputationSystem'
+import { createInitialTime } from '../systems/timeSystem'
 
 vi.mock('../utils/random', async () => {
   const actual = await vi.importActual<typeof import('../utils/random')>('../utils/random')
@@ -19,11 +21,20 @@ import { chance } from '../utils/random'
 const mockIdentity: Identity = {
   id: 'test',
   name: '测试',
+  title: '测试身份',
   description: '',
+  lore: '',
   icon: '🧪',
+  baseStats: {
+    maxHp: 100,
+    maxSanity: 100,
+    startPollution: 0,
+    startHunger: 100,
+    startEnergy: 100,
+  },
   startInventory: [],
   skills: [],
-  startingPollution: 0,
+  startPosition: { x: 0, y: 0 },
 }
 
 const defaultStats: PlayerStats = {
@@ -38,18 +49,19 @@ const defaultStats: PlayerStats = {
 
 function createState(inventory: InventoryItem[]): GameState {
   return {
-    day: 1,
-    timeOfDay: 'morning',
+    status: 'playing',
+    time: createInitialTime(mockIdentity),
     stats: { ...defaultStats },
     inventory,
-    flags: [],
-    unlockedRecipes: [],
-    reputation: {},
-    currentTileId: 'forest_2',
-    exploredTiles: ['forest_2'],
-    gamePhase: 'playing',
-    endingId: null,
-    actionPoints: 10,
+    equippedItem: null,
+    flags: {},
+    discoveredTiles: ['forest_2'],
+    triggeredEvents: [],
+    unlockedEndings: [],
+    currentEndingId: null,
+    currentEventId: null,
+    position: { x: 0, y: 0 },
+    reputation: createDefaultReputation(),
   }
 }
 

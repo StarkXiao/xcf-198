@@ -1,5 +1,5 @@
 import type { GameState, MapTile, Position, DangerInfo } from '../types/game'
-import type { Identity } from '../types/identity'
+import type { Identity, SkillEffect } from '../types/identity'
 import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { GameEvent, Ending } from '../types/events'
 import type { GrowthTreeProgress, GrowthNode } from '../types/growthTree'
@@ -52,6 +52,7 @@ import {
   decrementCooldowns,
   checkNodeCanUnlock,
   canUseActiveNode,
+  getUnlockedPassiveEffects,
 } from '../systems/growthTreeSystem'
 import type { LootQualityModifier } from '../types/game'
 import { clamp } from '../utils/random'
@@ -308,9 +309,15 @@ export class GameEngine {
     }
   }
 
+  private getGrowthEffects(): SkillEffect[] {
+    const tree = this.getGrowthTree()
+    if (!tree) return []
+    return getUnlockedPassiveEffects(this.growthProgress, tree)
+  }
+
   private handlePhaseChange() {
     const night = isNight(this.state.time)
-    this.state.stats = applyPhaseEffects(this.state.stats, night, this.identity)
+    this.state.stats = applyPhaseEffects(this.state.stats, night, this.identity, this.getGrowthEffects())
     this.growthProgress = decrementCooldowns(this.growthProgress)
   }
 
@@ -325,7 +332,7 @@ export class GameEngine {
       ? calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution)
       : null
 
-    const result = executeEventChoice(event, choiceId, this.state, this.identity, dangerInfo)
+    const result = executeEventChoice(event, choiceId, this.state, this.identity, dangerInfo, this.getGrowthEffects())
     if (!result) return null
 
     this.state.stats = result.consequences.stats
@@ -363,7 +370,7 @@ export class GameEngine {
       if (dangerInfo) {
         pGain = Math.round(pGain * dangerInfo.pollutionModifier)
       }
-      this.state.stats = applyPollutionEffect(this.state.stats, pGain, this.identity)
+      this.state.stats = applyPollutionEffect(this.state.stats, pGain, this.identity, this.getGrowthEffects())
     }
     if (event.sanityGain) {
       let sGain = event.sanityGain
@@ -442,7 +449,7 @@ export class GameEngine {
       this.state.stats.sanity = clamp(this.state.stats.sanity + itemData.sanityOnUse, 0, this.state.stats.maxSanity)
     }
     if (itemData.pollutionOnUse) {
-      this.state.stats = applyPollutionEffect(this.state.stats, itemData.pollutionOnUse, this.identity)
+      this.state.stats = applyPollutionEffect(this.state.stats, itemData.pollutionOnUse, this.identity, this.getGrowthEffects())
     }
     if (itemData.hungerOnUse) {
       this.state.stats.hunger = clamp(this.state.stats.hunger + itemData.hungerOnUse, 0, 100)

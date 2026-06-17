@@ -4,6 +4,7 @@ import { IDENTITIES } from '../data/identities'
 import type { SerializedSave } from '../engine/GameEngine'
 import type { InventoryItem } from '../types/items'
 import { ITEMS } from '../data/items'
+import { createInitialGrowthProgress } from '../systems/growthTreeSystem'
 
 describe('GameEngine - 耐久系统集成', () => {
   let engine: GameEngine
@@ -65,6 +66,7 @@ describe('GameEngine - 耐久系统集成', () => {
         state: engine.getState(),
         identity: engine.getIdentity(),
         inventory: [],
+        growthProgress: createInitialGrowthProgress(),
         savedAt: Date.now(),
       }
 
@@ -86,6 +88,7 @@ describe('GameEngine - 耐久系统集成', () => {
         state: { ...baseState, inventory: oldStyleInventory },
         identity,
         inventory: [],
+        growthProgress: createInitialGrowthProgress(),
         savedAt: Date.now(),
       }
 
@@ -115,6 +118,7 @@ describe('GameEngine - 耐久系统集成', () => {
         state: { ...baseState, inventory: testInventory },
         identity,
         inventory: [],
+        growthProgress: createInitialGrowthProgress(),
         savedAt: Date.now(),
       }
 
@@ -137,6 +141,7 @@ describe('GameEngine - 耐久系统集成', () => {
         state: { ...baseState, inventory: testInventory },
         identity,
         inventory: [],
+        growthProgress: createInitialGrowthProgress(),
         savedAt: Date.now(),
       }
 

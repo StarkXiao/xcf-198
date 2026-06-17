@@ -1,5 +1,5 @@
 import type { PlayerStats } from '../types/game'
-import type { Identity } from '../types/identity'
+import type { Identity, SkillEffect } from '../types/identity'
 import { clamp } from '../utils/random'
 
 export function createInitialStats(identity: Identity): PlayerStats {
@@ -15,16 +15,24 @@ export function createInitialStats(identity: Identity): PlayerStats {
   }
 }
 
+function aggregateEffectValue(effects: SkillEffect[], type: string): number {
+  return effects.reduce((acc, e) => {
+    if (e.type === type) return acc + e.value
+    return acc
+  }, 0)
+}
+
 export function applyPollutionEffect(
   stats: PlayerStats,
   pollutionGain: number,
   identity: Identity,
+  growthEffects: SkillEffect[] = [],
 ): PlayerStats {
   let actualGain = pollutionGain
-  const pollutionReduction = identity.skills.reduce((acc, s) => {
-    if (s.effect.type === 'reduce_pollution_gain') return acc + s.effect.value
-    return acc
-  }, 0)
+  const pollutionReduction = aggregateEffectValue(
+    [...identity.skills.map(s => s.effect), ...growthEffects],
+    'reduce_pollution_gain',
+  )
   if (actualGain > 0) {
     actualGain = actualGain * (1 - pollutionReduction)
   }
@@ -57,19 +65,15 @@ export function applyPhaseEffects(
   stats: PlayerStats,
   isNight: boolean,
   identity: Identity,
+  growthEffects: SkillEffect[] = [],
 ): PlayerStats {
   let newStats = { ...stats }
+  const allEffects = [...identity.skills.map(s => s.effect), ...growthEffects]
 
-  const hungerReduction = identity.skills.reduce((acc, s) => {
-    if (s.effect.type === 'reduce_hunger_rate') return acc + s.effect.value
-    return acc
-  }, 0)
+  const hungerReduction = aggregateEffectValue(allEffects, 'reduce_hunger_rate')
   const hungerDrain = Math.round(10 * (1 - hungerReduction))
 
-  const sanityBonus = identity.skills.reduce((acc, s) => {
-    if (s.effect.type === 'bonus_sanity_recovery') return acc + s.effect.value
-    return acc
-  }, 0)
+  const sanityBonus = aggregateEffectValue(allEffects, 'bonus_sanity_recovery')
 
   newStats.hunger = clamp(newStats.hunger - hungerDrain, 0, 100)
   newStats.energy = clamp(newStats.energy + 5, 0, 100)
@@ -94,12 +98,12 @@ export function applyPhaseEffects(
   return newStats
 }
 
-export function modifyHp(stats: PlayerStats, amount: number, identity: Identity): PlayerStats {
+export function modifyHp(stats: PlayerStats, amount: number, identity: Identity, growthEffects: SkillEffect[] = []): PlayerStats {
   let actualAmount = amount
-  const damageReduction = identity.skills.reduce((acc, s) => {
-    if (s.effect.type === 'reduce_damage_taken' && amount < 0) return acc + s.effect.value
-    return acc
-  }, 0)
+  const damageReduction = aggregateEffectValue(
+    [...identity.skills.map(s => s.effect), ...growthEffects],
+    'reduce_damage_taken',
+  )
   if (amount < 0) {
     actualAmount = amount * (1 - damageReduction)
   }

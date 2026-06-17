@@ -20,11 +20,20 @@ vi.mock('../utils/random', () => ({
 const mockIdentity: Identity = {
   id: 'test',
   name: '测试',
+  title: '测试身份',
   description: '',
+  lore: '',
   icon: '🧪',
+  baseStats: {
+    maxHp: 100,
+    maxSanity: 100,
+    startPollution: 0,
+    startHunger: 100,
+    startEnergy: 100,
+  },
   startInventory: [],
   skills: [],
-  startingPollution: 0,
+  startPosition: { x: 0, y: 0 },
 }
 
 const defaultStats: PlayerStats = {
@@ -186,13 +195,13 @@ describe('craftSystem - 耐久集成', () => {
         { itemId: 'wood', count: 10 },
         { itemId: 'flint', count: 10 },
       ]
-      const recipes = getAvailableRecipes(inv, defaultStats, mockIdentity, [], [])
+      const recipes = getAvailableRecipes(inv, {})
       expect(recipes.length).toBeGreaterThan(0)
       const cookMeat = recipes.find(r => r.id === 'cook_meat')
       expect(cookMeat).toBeDefined()
     })
 
-    it('工具损坏时相关配方不出现在可合成列表中', () => {
+    it('工具损坏时相关配方虽然出现但不能合成', () => {
       if (!toolRecipe) {
         expect(true).toBe(true)
         return
@@ -203,9 +212,12 @@ describe('craftSystem - 耐久集成', () => {
         { itemId: 'ancient_rune', count: 5 },
         { itemId: 'dried_herb', count: 5 },
       ]
-      const recipes = getAvailableRecipes(inv, defaultStats, mockIdentity, ['unlock_ritual'], [])
+      const recipes = getAvailableRecipes(inv, { unlock_ritual: true })
       const found = recipes.find(r => r.id === toolRecipe.id)
-      expect(found).toBeUndefined()
+      expect(found).toBeDefined()
+      const craftResult = canCraft(toolRecipe, inv, defaultStats)
+      expect(craftResult.canCraft).toBe(false)
+      expect(craftResult.reason).toContain('损坏')
     })
   })
 })

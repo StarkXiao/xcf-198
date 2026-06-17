@@ -2,7 +2,8 @@
 import { ref, computed, watch } from 'vue'
 import { useGameStore } from '@stores/gameStore'
 import { storeToRefs } from 'pinia'
-import type { GrowthNode, GrowthBranch } from '@game/types/growthTree'
+import type { GrowthNode, GrowthBranch, GrowthNodeUnlockCondition } from '@game/types/growthTree'
+import { checkNodeUnlockCondition } from '@game/systems/growthTreeSystem'
 
 const gameStore = useGameStore()
 const { growthTree, growthProgress, availableGrowthNodes, newUnlockNotification, state } = storeToRefs(gameStore)
@@ -42,6 +43,11 @@ const getBranchColor = (branchId: string) => {
 
 const getBranchInfo = (branchId: string): GrowthBranch | undefined => {
   return growthTree.value?.branches.find(b => b.id === branchId)
+}
+
+function getConditionCheck(condition: GrowthNodeUnlockCondition) {
+  if (!state.value || !growthProgress.value) return { satisfied: false, description: '未知条件' }
+  return checkNodeUnlockCondition(condition, state.value, growthProgress.value)
 }
 
 function selectNode(node: GrowthNode) {
@@ -219,75 +225,16 @@ watch(newUnlockNotification, (val) => {
         <h5 class="conditions-title">🔓 解锁条件</h5>
         <div class="conditions-list">
           <div
-            v-for="(cond, idx) in getNodeUnlockStatus(selectedNode).missingConditions.length > 0
-              ? selectedNode.unlockConditions
-              : selectedNode.unlockConditions"
+            v-for="(cond, idx) in selectedNode.unlockConditions"
             :key="idx"
             class="condition-item"
-            :class="{
-              satisfied: !getNodeUnlockStatus(selectedNode).missingConditions.includes(
-                selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].eventId
-                  ? `触发事件: ${selectedNode.unlockConditions[idx].eventId}`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].flagKey
-                  ? `设置标记: ${selectedNode.unlockConditions[idx].flagKey}${selectedNode.unlockConditions[idx].flagValue !== undefined ? ' = ' + String(selectedNode.unlockConditions[idx].flagValue) : ''}`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].endingId
-                  ? `解锁结局: ${selectedNode.unlockConditions[idx].endingId}`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].exploreCount
-                  ? `探索区域数量: ${growthProgress?.discoveredTiles?.length || 0}/${selectedNode.unlockConditions[idx].exploreCount}`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].day
-                  ? `存活天数: ${state?.time?.day || 0}/${selectedNode.unlockConditions[idx].day}`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].factionId
-                  ? `${selectedNode.unlockConditions[idx].factionId}声望: xxx`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].nodeId
-                  ? `解锁前置能力: ${selectedNode.unlockConditions[idx].nodeId}`
-                  : '未知条件'
-              )
-            }"
+            :class="{ satisfied: getConditionCheck(cond).satisfied }"
           >
             <span class="condition-check">
-              {{ !getNodeUnlockStatus(selectedNode).missingConditions.includes(
-                selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].eventId
-                  ? `触发事件: ${selectedNode.unlockConditions[idx].eventId}`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].flagKey
-                  ? `设置标记: ${selectedNode.unlockConditions[idx].flagKey}${selectedNode.unlockConditions[idx].flagValue !== undefined ? ' = ' + String(selectedNode.unlockConditions[idx].flagValue) : ''}`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].endingId
-                  ? `解锁结局: ${selectedNode.unlockConditions[idx].endingId}`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].exploreCount
-                  ? `探索区域数量: xxx`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].day
-                  ? `存活天数: xxx`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].factionId
-                  ? `${selectedNode.unlockConditions[idx].factionId}声望: xxx`
-                  : selectedNode.unlockConditions[idx] && selectedNode.unlockConditions[idx].nodeId
-                  ? `解锁前置能力: ${selectedNode.unlockConditions[idx].nodeId}`
-                  : '未知条件'
-              ) ? '✅' : '⬜' }}
+              {{ getConditionCheck(cond).satisfied ? '✅' : '⬜' }}
             </span>
             <span class="condition-text">
-              <template v-if="selectedNode.unlockConditions[idx]?.type === 'event_triggered'">
-                触发事件: {{ selectedNode.unlockConditions[idx].eventId }}
-              </template>
-              <template v-else-if="selectedNode.unlockConditions[idx]?.type === 'flag_set'">
-                设置标记: {{ selectedNode.unlockConditions[idx].flagKey }}
-                <span v-if="selectedNode.unlockConditions[idx].flagValue !== undefined">
-                  = {{ String(selectedNode.unlockConditions[idx].flagValue) }}
-                </span>
-              </template>
-              <template v-else-if="selectedNode.unlockConditions[idx]?.type === 'ending_unlocked'">
-                解锁结局: {{ selectedNode.unlockConditions[idx].endingId }}
-              </template>
-              <template v-else-if="selectedNode.unlockConditions[idx]?.type === 'explore_count'">
-                探索区域数量: {{ state?.discoveredTiles?.length || 0 }} / {{ selectedNode.unlockConditions[idx].exploreCount }}
-              </template>
-              <template v-else-if="selectedNode.unlockConditions[idx]?.type === 'day_reach'">
-                存活天数: {{ state?.time?.day || 0 }} / {{ selectedNode.unlockConditions[idx].day }}
-              </template>
-              <template v-else-if="selectedNode.unlockConditions[idx]?.type === 'reputation_threshold'">
-                {{ selectedNode.unlockConditions[idx].factionId }}声望 ≥ {{ selectedNode.unlockConditions[idx].value }}
-              </template>
-              <template v-else-if="selectedNode.unlockConditions[idx]?.type === 'node_unlocked'">
-                解锁前置能力: {{ growthTree.nodes.find(n => n.id === selectedNode.unlockConditions[idx]?.nodeId)?.name || selectedNode.unlockConditions[idx].nodeId }}
-              </template>
+              {{ getConditionCheck(cond).description }}
             </span>
           </div>
         </div>

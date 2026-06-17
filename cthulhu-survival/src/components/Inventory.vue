@@ -33,6 +33,16 @@ function useItem(itemId: string) {
 function canUse(itemId: string): boolean {
   const data = ITEMS[itemId]
   if (!data) return false
+
+  const scoutingTools = ['telescope', 'divination_rod', 'compass', 'trap_detector', 'eye_of_insight']
+  if (scoutingTools.includes(itemId)) {
+    return true
+  }
+
+  if (itemId === 'scouting_potion') {
+    return true
+  }
+
   return data.type === 'consumable'
     || !!data.hpOnUse || !!data.sanityOnUse || !!data.pollutionOnUse
     || !!data.hungerOnUse || !!data.energyOnUse
@@ -81,7 +91,7 @@ function repair(itemId: string) {
         >🔧</button>
       </div>
     </div>
-    <p class="hint">点击消耗品可使用 · 工具武器会损耗耐久</p>
+    <p class="hint">点击消耗品和侦查道具可使用 · 工具武器会损耗耐久</p>
   </div>
 </template>
 

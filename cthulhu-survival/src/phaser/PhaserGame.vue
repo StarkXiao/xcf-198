@@ -98,6 +98,15 @@ watch(
   },
 )
 
+watch(
+  () => state.value?.time.actionsLeft,
+  () => {
+    if (gameScene) {
+      gameScene.refreshAllScoutingInfo()
+    }
+  },
+)
+
 onBeforeUnmount(() => {
   if (gameInstance) {
     gameInstance.destroy(true)

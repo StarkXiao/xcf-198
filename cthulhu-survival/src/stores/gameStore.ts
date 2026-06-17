@@ -64,6 +64,29 @@ export const useGameStore = defineStore('game', () => {
     return engine.value.getLootQualityModifier()
   })
 
+  const scoutingPotionActive = computed<boolean>(() => {
+    return state.value?.flags?.['scouting_potion_active'] === true
+  })
+
+  const scoutingPotionTurns = computed<number>(() => {
+    return (state.value?.flags?.['scouting_potion_turns'] as number) || 0
+  })
+
+  const availableScoutingActions = computed(() => {
+    if (!engine.value) {
+      return {
+        canRecon: false,
+        canDisarm: false,
+        canLootHidden: false,
+        canHarvestSpecial: false,
+        hasRevealedHidden: false,
+        hasRevealedTrap: false,
+        hasRevealedSpecial: false,
+      }
+    }
+    return engine.value.getAvailableScoutingActions()
+  })
+
   const reputationSummary = computed(() => {
     if (!state.value) return []
     return getFactionReputationSummary(state.value.reputation)
@@ -247,6 +270,48 @@ export const useGameStore = defineStore('game', () => {
     return result
   }
 
+  function reconCurrentTile() {
+    if (!engine.value) return null
+    const result = engine.value.reconCurrentTile('all')
+    syncFromEngine()
+    messages.value.push(...result.messages)
+    return result
+  }
+
+  function reconSurroundingArea() {
+    if (!engine.value) return []
+    const results = engine.value.reconSurroundingArea()
+    syncFromEngine()
+    for (const r of results) {
+      messages.value.push(...r.messages)
+    }
+    return results
+  }
+
+  function disarmCurrentTrap() {
+    if (!engine.value) return null
+    const result = engine.value.disarmCurrentTrap()
+    syncFromEngine()
+    messages.value.push(...result.messages)
+    return result
+  }
+
+  function lootCurrentHidden() {
+    if (!engine.value) return null
+    const result = engine.value.lootCurrentHidden()
+    syncFromEngine()
+    messages.value.push(...result.messages)
+    return result
+  }
+
+  function harvestCurrentSpecialResource() {
+    if (!engine.value) return null
+    const result = engine.value.harvestCurrentSpecialResource()
+    syncFromEngine()
+    messages.value.push(...result.messages)
+    return result
+  }
+
   function canUseActiveGrowthNode(nodeId: string) {
     if (!engine.value) return false
     return engine.value.canUseActiveGrowthNode(nodeId)
@@ -320,6 +385,9 @@ export const useGameStore = defineStore('game', () => {
     reputationSummary,
     currentDangerInfo,
     lootQualityModifier,
+    scoutingPotionActive,
+    scoutingPotionTurns,
+    availableScoutingActions,
     startGame,
     moveTo,
     executeChoice,
@@ -344,6 +412,11 @@ export const useGameStore = defineStore('game', () => {
     checkGrowthNodeUnlock,
     useActiveGrowthNode,
     canUseActiveGrowthNode,
+    reconCurrentTile,
+    reconSurroundingArea,
+    disarmCurrentTrap,
+    lootCurrentHidden,
+    harvestCurrentSpecialResource,
     getSnapshots,
     getCurrentSnapshotId,
     rewindToSnapshotById,

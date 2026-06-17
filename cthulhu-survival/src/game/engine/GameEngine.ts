@@ -321,6 +321,9 @@ export class GameEngine {
       }
     }
 
+    const potionMsg = this.decrementScoutingPotion()
+    if (potionMsg) messages.push(potionMsg)
+
     const rawEvents = findTriggeredEvents(this.state, tile.type, tile.id, this.getQuestState())
     const filteredEvents = filterEventsByDanger(rawEvents, dangerInfo)
     const weightedEvents = weightEventsByDanger(filteredEvents, dangerInfo)
@@ -378,6 +381,21 @@ export class GameEngine {
     const night = isNight(this.state.time)
     this.state.stats = applyPhaseEffects(this.state.stats, night, this.identity, this.getGrowthEffects())
     this.growthProgress = decrementCooldowns(this.growthProgress)
+  }
+
+  private decrementScoutingPotion(): string | null {
+    if (this.state.flags['scouting_potion_active']) {
+      const turns = this.state.flags['scouting_potion_turns'] as number
+      if (turns > 1) {
+        this.state.flags['scouting_potion_turns'] = turns - 1
+        return null
+      } else {
+        this.state.flags['scouting_potion_active'] = false
+        this.state.flags['scouting_potion_turns'] = 0
+        return '鹰眼药剂的效果消退了，你的感官恢复了正常。'
+      }
+    }
+    return null
   }
 
   triggerEvent(event: GameEvent): void {
@@ -600,6 +618,15 @@ export class GameEngine {
     const itemData = ITEMS[itemId]
     if (!itemData) return { success: false, message: '物品数据错误' }
 
+    if (itemId === 'scouting_potion') {
+      return this.useScoutingPotion()
+    }
+
+    const scoutingTools = ['telescope', 'divination_rod', 'compass', 'trap_detector', 'eye_of_insight']
+    if (scoutingTools.includes(itemId)) {
+      return this.useScoutingItem(itemId)
+    }
+
     if (itemData.type !== 'consumable' && !itemData.hpOnUse && !itemData.sanityOnUse
         && !itemData.pollutionOnUse && !itemData.hungerOnUse && !itemData.energyOnUse) {
       return { success: false, message: '该物品无法使用' }
@@ -760,6 +787,8 @@ export class GameEngine {
       if (actionResult.phaseChanged) {
         this.handlePhaseChange()
       }
+      const potionMsg = this.decrementScoutingPotion()
+      if (potionMsg) result.messages.push(potionMsg)
     }
 
     const ending = checkForImmediateEnding(this.state)
@@ -799,6 +828,10 @@ export class GameEngine {
       if (actionResult.phaseChanged) {
         this.handlePhaseChange()
       }
+      const potionMsg = this.decrementScoutingPotion()
+      if (potionMsg && results.length > 0) {
+        results[results.length - 1].messages.push(potionMsg)
+      }
     }
 
     const ending = checkForImmediateEnding(this.state)
@@ -835,6 +868,8 @@ export class GameEngine {
       if (actionResult.phaseChanged) {
         this.handlePhaseChange()
       }
+      const potionMsg = this.decrementScoutingPotion()
+      if (potionMsg) result.messages.push(potionMsg)
     }
 
     const ending = checkForImmediateEnding(this.state)
@@ -874,6 +909,8 @@ export class GameEngine {
       if (actionResult.phaseChanged) {
         this.handlePhaseChange()
       }
+      const potionMsg = this.decrementScoutingPotion()
+      if (potionMsg) result.messages.push(potionMsg)
     }
 
     const ending = checkForImmediateEnding(this.state)
@@ -931,6 +968,8 @@ export class GameEngine {
       if (actionResult.phaseChanged) {
         this.handlePhaseChange()
       }
+      const potionMsg = this.decrementScoutingPotion()
+      if (potionMsg) result.messages.push(potionMsg)
     }
 
     const ending = checkForImmediateEnding(this.state)

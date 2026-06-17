@@ -17,7 +17,7 @@ import TimelinePanel from '@components/TimelinePanel.vue'
 const router = useRouter()
 const gameStore = useGameStore()
 const uiStore = useUiStore()
-const { state, identity, currentTile, messages, currentDangerInfo, lootQualityModifier, availableGrowthNodes, newUnlockNotification } = storeToRefs(gameStore)
+const { state, identity, currentTile, messages, currentDangerInfo, lootQualityModifier, availableGrowthNodes, newUnlockNotification, scoutingPotionActive, scoutingPotionTurns, availableScoutingActions } = storeToRefs(gameStore)
 const { activePanel } = storeToRefs(uiStore)
 
 const showGrowthModal = ref(false)
@@ -74,6 +74,26 @@ function checkEndings() {
       gameStore.triggerEnding(ending.id)
     }
   }
+}
+
+function doReconTile() {
+  gameStore.reconCurrentTile()
+}
+
+function doReconArea() {
+  gameStore.reconSurroundingArea()
+}
+
+function doDisarmTrap() {
+  gameStore.disarmCurrentTrap()
+}
+
+function doLootHidden() {
+  gameStore.lootCurrentHidden()
+}
+
+function doHarvestSpecial() {
+  gameStore.harvestCurrentSpecialResource()
 }
 </script>
 
@@ -150,6 +170,101 @@ function checkEndings() {
               <span class="detail-item" :title="'污染修正: ' + currentDangerInfo.pollutionModifier.toFixed(1) + 'x'">
                 ☣️ 污染 x{{ currentDangerInfo.pollutionModifier.toFixed(1) }}
               </span>
+            </div>
+
+            <div v-if="scoutingPotionActive" class="potion-active-badge">
+              👁️ 鹰眼药剂生效中 (剩余 {{ scoutingPotionTurns }} 回合)
+            </div>
+
+            <div class="scouting-actions">
+              <div class="scouting-row">
+                <button
+                  class="scout-btn"
+                  :disabled="!availableScoutingActions.canRecon"
+                  @click="doReconTile"
+                  title="仔细侦查当前所在格子，可能发现隐藏物、陷阱或特殊资源"
+                >
+                  🔍 侦查当前格
+                </button>
+                <button
+                  class="scout-btn"
+                  :disabled="!availableScoutingActions.canRecon"
+                  @click="doReconArea"
+                  title="侦查周围一圈的所有格子"
+                >
+                  👁️ 侦查周边
+                </button>
+              </div>
+              <div class="scouting-row">
+                <button
+                  v-if="availableScoutingActions.hasRevealedTrap"
+                  class="scout-btn danger"
+                  :disabled="!availableScoutingActions.canDisarm"
+                  @click="doDisarmTrap"
+                  title="尝试解除已发现的陷阱"
+                >
+                  ⚠️ 拆除陷阱
+                </button>
+                <button
+                  v-if="availableScoutingActions.hasRevealedHidden"
+                  class="scout-btn success"
+                  :disabled="!availableScoutingActions.canLootHidden"
+                  @click="doLootHidden"
+                  title="搜刮已发现的隐藏物品"
+                >
+                  🔍 搜刮隐藏
+                </button>
+                <button
+                  v-if="availableScoutingActions.hasRevealedSpecial"
+                  class="scout-btn special"
+                  :disabled="!availableScoutingActions.canHarvestSpecial"
+                  @click="doHarvestSpecial"
+                  title="采集已发现的特殊资源"
+                >
+                  ✨ 采集资源
+                </button>
+              </div>
+            </div>
+
+            <div v-if="currentTile?.trap?.revealed || currentTile?.hidden?.revealed || currentTile?.specialResource?.revealed" class="tile-scout-details">
+              <div v-if="currentTile?.trap?.revealed" class="scout-detail trap-detail" :class="{ disarmed: currentTile.trap.disarmed, triggered: currentTile.trap.triggered }">
+                <div class="scout-detail-head">
+                  <span class="scout-icon">{{ currentTile.trap.disarmed ? '✅' : currentTile.trap.triggered ? '💥' : '⚠️' }}</span>
+                  <span class="scout-name">{{ currentTile.trap.name }}</span>
+                  <span v-if="currentTile.trap.disarmed" class="scout-tag">已解除</span>
+                  <span v-else-if="currentTile.trap.triggered" class="scout-tag triggered">已触发</span>
+                  <span v-else class="scout-tag active">危险!</span>
+                </div>
+                <p class="scout-desc">{{ currentTile.trap.description }}</p>
+                <p v-if="!currentTile.trap.triggered && !currentTile.trap.disarmed" class="scout-stat">潜在伤害: ❤️ -{{ currentTile.trap.damage }}</p>
+              </div>
+
+              <div v-if="currentTile?.hidden?.revealed" class="scout-detail hidden-detail" :class="{ looted: currentTile.hidden.looted }">
+                <div class="scout-detail-head">
+                  <span class="scout-icon">{{ currentTile.hidden.looted ? '📦' : '🔍' }}</span>
+                  <span class="scout-name">{{ currentTile.hidden.name }}</span>
+                  <span v-if="currentTile.hidden.looted" class="scout-tag">已搜刮</span>
+                  <span v-else class="scout-tag success">待搜刮</span>
+                </div>
+                <p class="scout-desc">{{ currentTile.hidden.description }}</p>
+                <p v-if="!currentTile.hidden.looted && currentTile.hidden.lootItems" class="scout-stat">
+                  可能包含: {{ currentTile.hidden.lootItems.map(i => i.itemId + 'x' + i.count).join(', ') }}
+                </p>
+              </div>
+
+              <div v-if="currentTile?.specialResource?.revealed" class="scout-detail special-detail" :class="{ harvested: currentTile.specialResource.harvested }">
+                <div class="scout-detail-head">
+                  <span class="scout-icon">{{ currentTile.specialResource.harvested ? '⭐' : '✨' }}</span>
+                  <span class="scout-name">{{ currentTile.specialResource.name }}</span>
+                  <span v-if="currentTile.specialResource.harvested" class="scout-tag">已采集</span>
+                  <span v-else class="scout-tag special">可采集</span>
+                </div>
+                <p class="scout-desc">{{ currentTile.specialResource.description }}</p>
+                <p v-if="!currentTile.specialResource.harvested" class="scout-stat">
+                  采集消耗: ⚡ {{ currentTile.specialResource.harvestCost?.energy || 0 }}
+                  <span v-if="currentTile.specialResource.harvestCost?.sanity">, 🧠 {{ currentTile.specialResource.harvestCost.sanity }}</span>
+                </p>
+              </div>
             </div>
           </div>
           <div class="action-btns">
@@ -481,6 +596,194 @@ function checkEndings() {
 .loot-quality-info {
   color: var(--color-cthulhu-green-glow);
   font-weight: 500;
+}
+
+.potion-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, rgba(241, 196, 15, 0.2), rgba(230, 126, 34, 0.2));
+  border: 1px solid #f39c12;
+  border-radius: 20px;
+  font-size: 11px;
+  color: #f39c12;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.scouting-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.scouting-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.scout-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.scout-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-cthulhu-green);
+  transform: translateY(-1px);
+}
+
+.scout-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.scout-btn.danger {
+  border-color: #c0392b;
+  color: #e74c3c;
+}
+
+.scout-btn.danger:hover:not(:disabled) {
+  background: rgba(231, 76, 60, 0.1);
+}
+
+.scout-btn.success {
+  border-color: #27ae60;
+  color: #2ecc71;
+}
+
+.scout-btn.success:hover:not(:disabled) {
+  background: rgba(46, 204, 113, 0.1);
+}
+
+.scout-btn.special {
+  border-color: #8e44ad;
+  color: #9b59b6;
+}
+
+.scout-btn.special:hover:not(:disabled) {
+  background: rgba(155, 89, 182, 0.1);
+}
+
+.tile-scout-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.scout-detail {
+  padding: 10px 12px;
+  background: var(--color-bg-card);
+  border-radius: 8px;
+  border-left: 3px solid var(--color-border);
+}
+
+.scout-detail.trap-detail {
+  border-left-color: #e74c3c;
+}
+
+.scout-detail.trap-detail.disarmed {
+  border-left-color: #2ecc71;
+  opacity: 0.8;
+}
+
+.scout-detail.trap-detail.triggered {
+  border-left-color: #7f8c8d;
+  opacity: 0.6;
+}
+
+.scout-detail.hidden-detail {
+  border-left-color: #2ecc71;
+}
+
+.scout-detail.hidden-detail.looted {
+  border-left-color: #7f8c8d;
+  opacity: 0.7;
+}
+
+.scout-detail.special-detail {
+  border-left-color: #9b59b6;
+}
+
+.scout-detail.special-detail.harvested {
+  border-left-color: #7f8c8d;
+  opacity: 0.7;
+}
+
+.scout-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.scout-icon {
+  font-size: 16px;
+}
+
+.scout-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  flex: 1;
+}
+
+.scout-tag {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(127, 140, 141, 0.3);
+  color: #bdc3c7;
+  font-weight: 600;
+}
+
+.scout-tag.active {
+  background: rgba(231, 76, 60, 0.25);
+  color: #e74c3c;
+}
+
+.scout-tag.triggered {
+  background: rgba(127, 140, 141, 0.3);
+  color: #95a5a6;
+}
+
+.scout-tag.success {
+  background: rgba(46, 204, 113, 0.25);
+  color: #2ecc71;
+}
+
+.scout-tag.special {
+  background: rgba(155, 89, 182, 0.25);
+  color: #9b59b6;
+}
+
+.scout-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0 0 4px 0;
+}
+
+.scout-stat {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  margin: 0;
 }
 
 .panel-tabs {

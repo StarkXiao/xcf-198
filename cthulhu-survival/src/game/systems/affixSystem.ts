@@ -214,6 +214,80 @@ export function calculateCraftYieldBonus(inventory: InventoryItem[], recipeIngre
   return bonus
 }
 
+export function calculateCraftSuccessBonusFromConsumed(consumedItems: InventoryItem[]): number {
+  let bonus = 0
+  for (const item of consumedItems) {
+    bonus += getAffixTotalValue(item, 'craft_success')
+  }
+  return Math.min(bonus, 0.5)
+}
+
+export function calculateCraftYieldBonusFromConsumed(consumedItems: InventoryItem[]): number {
+  let bonus = 0
+  for (const item of consumedItems) {
+    bonus += getAffixTotalValue(item, 'craft_yield')
+  }
+  return bonus
+}
+
+export function calculateAffixChanceFromConsumed(consumedItems: InventoryItem[]): number {
+  let chance = 0
+  for (const item of consumedItems) {
+    if (item.affixes && item.affixes.length > 0) {
+      chance += 0.15 * item.affixes.length
+    }
+  }
+  return chance
+}
+
+export function calculateRarityBoostFromConsumed(consumedItems: InventoryItem[]): number {
+  let boost = 0
+  for (const item of consumedItems) {
+    if (item.affixes && item.affixes.length > 0) {
+      boost += item.affixes.length * 0.1
+    }
+  }
+  return boost
+}
+
+export function simulateConsumedAffixedItems(
+  inventory: InventoryItem[],
+  ingredients: { itemId: string; count: number }[],
+): InventoryItem[] {
+  const consumed: InventoryItem[] = []
+  const tempInventory = inventory.map(item => ({ ...item }))
+
+  for (const ing of ingredients) {
+    let remaining = ing.count
+    const itemIndices = tempInventory
+      .map((item, idx) => ({ item, idx }))
+      .filter(x => x.item.itemId === ing.itemId)
+      .sort((a, b) => {
+        const aHasAffix = !!a.item.affixes && a.item.affixes.length > 0
+        const bHasAffix = !!b.item.affixes && b.item.affixes.length > 0
+        if (aHasAffix && !bHasAffix) return -1
+        if (!aHasAffix && bHasAffix) return 1
+        return 0
+      })
+
+    for (const { item, idx } of itemIndices) {
+      if (remaining <= 0) break
+      const take = Math.min(item.count, remaining)
+
+      if (item.affixes && item.affixes.length > 0) {
+        for (let i = 0; i < take; i++) {
+          consumed.push({ ...item, count: 1 })
+        }
+      }
+
+      tempInventory[idx] = { ...tempInventory[idx], count: tempInventory[idx].count - take }
+      remaining -= take
+    }
+  }
+
+  return consumed
+}
+
 export function calculateEffectPowerBonus(inventoryItem: InventoryItem): number {
   return getAffixTotalValue(inventoryItem, 'effect_power')
 }

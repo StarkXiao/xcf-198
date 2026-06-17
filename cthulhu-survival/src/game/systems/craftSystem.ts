@@ -8,11 +8,13 @@ import { checkReputationRequirement } from './reputationSystem'
 import { isItemBroken, applyDurabilityWear, initializeDurability, isItemWithDurability } from './durabilitySystem'
 import { ITEMS } from '../data/items'
 import {
-  calculateCraftSuccessBonus,
-  calculateCraftYieldBonus,
   createAffixedItem,
   calculateAffixChanceFromEffects,
   calculateAffixRarityFromEffects,
+  calculateCraftSuccessBonusFromConsumed,
+  calculateCraftYieldBonusFromConsumed,
+  calculateAffixChanceFromConsumed,
+  calculateRarityBoostFromConsumed,
 } from './affixSystem'
 
 export function getAvailableRecipes(
@@ -94,14 +96,10 @@ export function craftItem(
     return acc
   }, 0)
 
-  const affixSuccessBonus = calculateCraftSuccessBonus(inventory, recipe.ingredients)
-  const affixYieldBonus = calculateCraftYieldBonus(inventory, recipe.ingredients)
-
-  const successRate = Math.max(0.1, 1 - recipe.difficulty + bonusSuccess + affixSuccessBonus)
-  const success = chance(successRate)
-
   let newInventory = [...inventory]
   let newStats = { ...stats }
+
+  const consumedAffixedItems: InventoryItem[] = []
 
   for (const ing of recipe.ingredients) {
     let remaining = ing.count
@@ -111,20 +109,33 @@ export function craftItem(
       .sort((a, b) => {
         const aHasAffix = !!a.item.affixes && a.item.affixes.length > 0
         const bHasAffix = !!b.item.affixes && b.item.affixes.length > 0
-        if (aHasAffix && !bHasAffix) return 1
-        if (!aHasAffix && bHasAffix) return -1
+        if (aHasAffix && !bHasAffix) return -1
+        if (!aHasAffix && bHasAffix) return 1
         return 0
       })
 
     for (const { item, idx } of itemIndices) {
       if (remaining <= 0) break
       const take = Math.min(item.count, remaining)
+
+      if (item.affixes && item.affixes.length > 0) {
+        for (let i = 0; i < take; i++) {
+          consumedAffixedItems.push({ ...item, count: 1 })
+        }
+      }
+
       newInventory[idx] = { ...newInventory[idx], count: newInventory[idx].count - take }
       remaining -= take
     }
 
     newInventory = newInventory.filter(item => item.count > 0)
   }
+
+  const affixSuccessBonus = calculateCraftSuccessBonusFromConsumed(consumedAffixedItems)
+  const affixYieldBonus = calculateCraftYieldBonusFromConsumed(consumedAffixedItems)
+
+  const successRate = Math.max(0.1, 1 - recipe.difficulty + bonusSuccess + affixSuccessBonus)
+  const success = chance(successRate)
 
   newStats.energy = Math.max(0, newStats.energy - recipe.energyCost)
   newStats.sanity = Math.max(0, newStats.sanity + recipe.sanityCost)
@@ -145,16 +156,8 @@ export function craftItem(
       resultItemData.type === 'artifact'
     )
 
-    let affixChance = 0
-    let totalRarityBoost = 0
-    for (const ing of recipe.ingredients) {
-      for (const invItem of inventory) {
-        if (invItem.itemId === ing.itemId && invItem.affixes && invItem.affixes.length > 0) {
-          affixChance += 0.15 * invItem.affixes.length
-          totalRarityBoost += invItem.affixes.length * 0.1
-        }
-      }
-    }
+    let affixChance = calculateAffixChanceFromConsumed(consumedAffixedItems)
+    let totalRarityBoost = calculateRarityBoostFromConsumed(consumedAffixedItems)
 
     affixChance += calculateAffixChanceFromEffects(effects)
     totalRarityBoost += calculateAffixRarityFromEffects(effects)

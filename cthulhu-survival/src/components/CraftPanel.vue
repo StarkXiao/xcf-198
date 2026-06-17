@@ -6,7 +6,7 @@ import { ITEMS } from '@game/data/items'
 import { FACTIONS } from '@game/data/factions'
 import type { CraftRecipe } from '@game/types/items'
 import { getItemDurabilityInfo, getDurabilityColor } from '@game/systems/durabilitySystem'
-import { calculateCraftSuccessBonus, calculateCraftYieldBonus } from '@game/systems/affixSystem'
+import { calculateCraftSuccessBonusFromConsumed, calculateCraftYieldBonusFromConsumed, calculateAffixChanceFromConsumed, simulateConsumedAffixedItems } from '@game/systems/affixSystem'
 
 const gameStore = useGameStore()
 const { inventory, reputation } = storeToRefs(gameStore)
@@ -41,24 +41,23 @@ function getAffixedIngredients(itemId: string) {
   return inventory.value.filter(item => item.itemId === itemId && item.affixes && item.affixes.length > 0)
 }
 
+function getConsumedAffixedItems(r: CraftRecipe) {
+  return simulateConsumedAffixedItems(inventory.value, r.ingredients)
+}
+
 function getCraftSuccessBonus(r: CraftRecipe): number {
-  return calculateCraftSuccessBonus(inventory.value, r.ingredients)
+  const consumed = getConsumedAffixedItems(r)
+  return calculateCraftSuccessBonusFromConsumed(consumed)
 }
 
 function getCraftYieldBonus(r: CraftRecipe): number {
-  return calculateCraftYieldBonus(inventory.value, r.ingredients)
+  const consumed = getConsumedAffixedItems(r)
+  return calculateCraftYieldBonusFromConsumed(consumed)
 }
 
 function getAffixChance(r: CraftRecipe): number {
-  let chance = 0
-  for (const ing of r.ingredients) {
-    const affixedItems = getAffixedIngredients(ing.itemId)
-    for (const item of affixedItems) {
-      if (item.affixes) {
-        chance += 0.15 * item.affixes.length
-      }
-    }
-  }
+  const consumed = getConsumedAffixedItems(r)
+  const chance = calculateAffixChanceFromConsumed(consumed)
   return Math.min(chance, 0.8)
 }
 

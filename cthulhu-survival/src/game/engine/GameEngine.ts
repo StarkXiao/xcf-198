@@ -4,6 +4,7 @@ import type { InventoryItem, CraftRecipe } from '../types/items'
 import type { GameEvent, Ending, EventChoice } from '../types/events'
 import type { GrowthTreeProgress, GrowthNode } from '../types/growthTree'
 import type { FactionId } from '../types/faction'
+import type { Relic } from '../types/relic'
 import { MAP_TILES, getTileAt } from '../data/events'
 import { ITEMS } from '../data/items'
 import {
@@ -133,16 +134,19 @@ export class GameEngine {
   private state: GameState
   private identity: Identity
   private growthProgress: GrowthTreeProgress
+  private relic: Relic | null
 
-  constructor(identity: Identity) {
+  constructor(identity: Identity, relic: Relic | null = null) {
     this.identity = identity
-    this.state = this.createInitialState(identity)
+    this.relic = relic
+    this.state = this.createInitialState(identity, relic)
     this.growthProgress = createInitialGrowthProgress()
   }
 
   static fromSerialized(data: SerializedSave): GameEngine {
     const identity = data.identity
-    const engine = new GameEngine(identity)
+    const relic = data.relic || null
+    const engine = new GameEngine(identity, relic)
     const rawInventory = Array.isArray(data.state.inventory) && data.state.inventory.length > 0
       ? data.state.inventory
       : (data.inventory || [])
@@ -153,29 +157,172 @@ export class GameEngine {
       merchantState: (data.state as any).merchantState || createInitialMerchantState(),
     }
     engine.identity = data.identity
+    engine.relic = relic
     engine.growthProgress = data.growthProgress || createInitialGrowthProgress()
     return engine
   }
 
-  private createInitialState(identity: Identity): GameState {
-    const inventory = initializeDurability(itemIdsToInventory([...identity.startInventory]))
-    return {
+  private createInitialState(identity: Identity, relic: Relic | null): GameState {
+    const mergedIdentity = this.applyRelicToIdentity(identity, relic)
+    const baseInventoryItems = [...mergedIdentity.startInventory]
+    const bonusItems = this.getRelicBonusItems(relic)
+    const inventory = initializeDurability(itemIdsToInventory([...baseInventoryItems, ...bonusItems]))
+
+    const initialFlags: Record<string, boolean | number | string> = {}
+    this.applyRelicFlags(relic, initialFlags)
+
+    const discoveredTiles = this.getInitialDiscoveredTiles(mergedIdentity.startPosition)
+    this.applyRelicTileReveals(relic, discoveredTiles)
+
+    const reputation = createDefaultReputation()
+    this.applyRelicReputation(relic, reputation)
+
+    const state: GameState = {
       status: 'playing',
-      time: createInitialTime(identity),
-      stats: createInitialStats(identity),
-      position: { ...identity.startPosition },
+      time: createInitialTime(mergedIdentity),
+      stats: createInitialStats(mergedIdentity),
+      position: { ...mergedIdentity.startPosition },
       inventory,
       equippedItem: null,
-      flags: {},
-      discoveredTiles: this.getInitialDiscoveredTiles(identity.startPosition),
+      flags: initialFlags,
+      discoveredTiles,
       triggeredEvents: [],
       unlockedEndings: [],
       currentEndingId: null,
       currentEventId: null,
-      reputation: createDefaultReputation(),
+      reputation,
       questState: createInitialQuestState(),
       merchantState: createInitialMerchantState(),
     }
+
+    this.applyRelicBonusActions(relic, state)
+
+    return state
+  }
+
+  private applyRelicToIdentity(identity: Identity, relic: Relic | null): Identity {
+    if (!relic) return identity
+    const merged: Identity = {
+      ...identity,
+      baseStats: { ...identity.baseStats },
+      startPosition: { ...identity.startPosition },
+      startInventory: [...identity.startInventory],
+      skills: [...identity.skills],
+    }
+
+    for (const effect of relic.effects) {
+      if (effect.type === 'modify_base_stats' && effect.stats) {
+        if (effect.stats.maxHp) merged.baseStats.maxHp += effect.stats.maxHp
+        if (effect.stats.maxSanity) merged.baseStats.maxSanity += effect.stats.maxSanity
+        if (effect.stats.startPollution !== undefined) merged.baseStats.startPollution += effect.stats.startPollution
+        if (effect.stats.startHunger !== undefined) merged.baseStats.startHunger += effect.stats.startHunger
+        if (effect.stats.startEnergy !== undefined) merged.baseStats.startEnergy += effect.stats.startEnergy
+      }
+      if (effect.type === 'modify_start_position' && effect.position) {
+        merged.startPosition = { ...effect.position }
+      }
+      if (effect.type === 'add_passive_effect' && effect.skill) {
+        const pseudoSkill = {
+          id: `relic_${relic.id}_skill`,
+          name: `${relic.name}的力量`,
+          description: `${relic.name}赋予的被动效果`,
+          type: 'passive' as const,
+          effect: effect.skill,
+        }
+        merged.skills.push(pseudoSkill)
+      }
+    }
+    return merged
+  }
+
+  private getRelicBonusItems(relic: Relic | null): string[] {
+    if (!relic) return []
+    const items: string[] = []
+    for (const effect of relic.effects) {
+      if (effect.type === 'bonus_start_items') {
+        if (effect.itemId && effect.itemCount) {
+          for (let i = 0; i < effect.itemCount; i++) items.push(effect.itemId)
+        }
+        if (effect.items) {
+          for (const item of effect.items) {
+            for (let i = 0; i < item.count; i++) items.push(item.itemId)
+          }
+        }
+      }
+    }
+    return items
+  }
+
+  private applyRelicFlags(relic: Relic | null, flags: Record<string, boolean | number | string>): void {
+    if (!relic) return
+    for (const effect of relic.effects) {
+      if (effect.type === 'set_start_flag' && effect.flag) {
+        flags[effect.flag] = effect.flagValue !== undefined ? effect.flagValue : true
+      }
+      if (effect.type === 'unlock_recipe' && effect.itemId) {
+        flags[`unlock_${effect.itemId}`] = true
+      }
+    }
+  }
+
+  private applyRelicTileReveals(relic: Relic | null, discoveredTiles: string[]): void {
+    if (!relic) return
+    for (const effect of relic.effects) {
+      if (effect.type === 'reveal_tiles' && effect.tileIds) {
+        for (const tileId of effect.tileIds) {
+          if (!discoveredTiles.includes(tileId)) discoveredTiles.push(tileId)
+        }
+      }
+    }
+  }
+
+  private applyRelicReputation(relic: Relic | null, reputation: Record<string, number>): void {
+    if (!relic) return
+    for (const effect of relic.effects) {
+      if (effect.type === 'bonus_start_reputation' && effect.factionId && effect.reputation) {
+        reputation[effect.factionId] = (reputation[effect.factionId] || 0) + effect.reputation
+      }
+    }
+  }
+
+  private applyRelicBonusActions(relic: Relic | null, state: GameState): void {
+    if (!relic) return
+    for (const effect of relic.effects) {
+      if (effect.type === 'bonus_start_actions' && effect.value) {
+        state.time.actionsLeft += effect.value
+      }
+    }
+  }
+
+  getRelic(): Relic | null {
+    return this.relic
+  }
+
+  getRelicPassiveEffects(): SkillEffect[] {
+    if (!this.relic) return []
+    const effects: SkillEffect[] = []
+    const relicEffectMap: Record<string, boolean> = {
+      reduce_hunger_rate: true,
+      reduce_pollution_gain: true,
+      bonus_sanity_recovery: true,
+      increase_action_points: true,
+      reduce_damage_taken: true,
+      bonus_craft_success: true,
+      scouting_range_bonus: false,
+      merchant_discount: false,
+    }
+    for (const effect of this.relic.effects) {
+      if (relicEffectMap[effect.type] && effect.value !== undefined) {
+        effects.push({
+          type: effect.type as any,
+          value: effect.value,
+        })
+      }
+      if (effect.type === 'add_passive_effect' && effect.skill) {
+        effects.push(effect.skill)
+      }
+    }
+    return effects
   }
 
   private getInitialDiscoveredTiles(start: Position): string[] {
@@ -433,8 +580,12 @@ export class GameEngine {
 
   private getGrowthEffects(): SkillEffect[] {
     const tree = this.getGrowthTree()
-    if (!tree) return []
-    return getUnlockedPassiveEffects(this.growthProgress, tree)
+    const growthEffects = tree ? getUnlockedPassiveEffects(this.growthProgress, tree) : []
+    const relicEffects = this.getRelicPassiveEffects()
+    const identityEffects = this.identity.skills
+      .filter(s => s.type === 'passive')
+      .map(s => s.effect)
+    return [...growthEffects, ...relicEffects, ...identityEffects]
   }
 
   private getQuestState() {
@@ -1201,6 +1352,7 @@ export class GameEngine {
       identity: this.getIdentity(),
       inventory: this.getInventory(),
       growthProgress: this.getGrowthProgress(),
+      relic: this.getRelic(),
       savedAt: Date.now(),
     }
   }
@@ -1433,5 +1585,6 @@ export interface SerializedSave {
   identity: Identity
   inventory: InventoryItem[]
   growthProgress: GrowthTreeProgress
+  relic?: Relic | null
   savedAt: number
 }

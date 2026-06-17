@@ -7,6 +7,7 @@ import type { GameEvent, Ending } from '@game/types/events'
 import type { ReputationMap } from '@game/types/faction'
 import type { GrowthTreeProgress, GrowthNode, GrowthTree } from '@game/types/growthTree'
 import type { Merchant, MerchantState } from '@game/types/merchant'
+import type { Relic } from '@game/types/relic'
 import { GameEngine, type SerializedSave } from '@game/engine/GameEngine'
 import type { EventResult } from '@game/systems/eventSystem'
 import { findTriggeredEvents } from '@game/systems/eventSystem'
@@ -25,6 +26,7 @@ export const useGameStore = defineStore('game', () => {
   const engine = ref<GameEngine | null>(null)
   const state = ref<GameState | null>(null)
   const identity = ref<Identity | null>(null)
+  const relic = ref<Relic | null>(null)
   const messages = ref<string[]>([])
   const currentEvent = ref<GameEvent | null>(null)
   const lastEventResult = ref<EventResult | null>(null)
@@ -123,11 +125,19 @@ export const useGameStore = defineStore('game', () => {
     return engine.value.getSuccessfulDeals(merchantInteraction.value.merchant.id)
   })
 
-  function startGame(selectedIdentity: Identity) {
-    engine.value = new GameEngine(selectedIdentity)
+  function startGame(selectedIdentity: Identity, selectedRelic: Relic | null = null) {
+    engine.value = new GameEngine(selectedIdentity, selectedRelic)
     identity.value = selectedIdentity
+    relic.value = selectedRelic
     syncFromEngine()
-    messages.value = [`你以「${selectedIdentity.name}」的身份降临到这片诡秘之地...`]
+    if (selectedRelic) {
+      messages.value = [
+        `你以「${selectedIdentity.name}」的身份降临到这片诡秘之地...`,
+        `开局遗物：「${selectedRelic.name}」——${selectedRelic.description.slice(0, 40)}...`,
+      ]
+    } else {
+      messages.value = [`你以「${selectedIdentity.name}」的身份降临到这片诡秘之地...`]
+    }
   }
 
   function syncFromEngine() {
@@ -135,6 +145,7 @@ export const useGameStore = defineStore('game', () => {
     state.value = engine.value.getState()
     identity.value = engine.value.getIdentity()
     growthProgress.value = engine.value.getGrowthProgress()
+    relic.value = engine.value.getRelic()
   }
 
   function moveTo(pos: Position) {
@@ -330,6 +341,7 @@ export const useGameStore = defineStore('game', () => {
       identity: identity.value,
       inventory: state.value.inventory,
       growthProgress: growthProgress.value,
+      relic: relic.value,
       savedAt: Date.now(),
     }
   }
@@ -352,6 +364,7 @@ export const useGameStore = defineStore('game', () => {
     engine.value = null
     state.value = null
     identity.value = null
+    relic.value = null
     messages.value = []
     currentEvent.value = null
     lastEventResult.value = null
@@ -489,6 +502,7 @@ export const useGameStore = defineStore('game', () => {
     engine,
     state,
     identity,
+    relic,
     inventory,
     messages,
     currentEvent,

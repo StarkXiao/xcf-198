@@ -2,6 +2,7 @@ import type { GameState } from './game'
 import type { Identity } from './identity'
 import type { InventoryItem } from './items'
 import type { GrowthTreeProgress, GrowthAchievement } from './growthTree'
+import type { Relic } from './relic'
 
 export interface ChoiceRecord {
   choiceId: string
@@ -22,6 +23,7 @@ export interface ChapterSnapshot {
   identity: Identity
   inventory: InventoryItem[]
   growthProgress: GrowthTreeProgress
+  relic: Relic | null
   snapshotType: 'auto' | 'manual'
   isPreEventSnapshot: boolean
   parentSnapshotId: string | null

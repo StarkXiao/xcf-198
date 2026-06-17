@@ -98,6 +98,7 @@ export function createSnapshotFromSave(
     identity: JSON.parse(JSON.stringify(save.identity)),
     inventory: JSON.parse(JSON.stringify(save.inventory)),
     growthProgress: JSON.parse(JSON.stringify(save.growthProgress)),
+    relic: save.relic ? JSON.parse(JSON.stringify(save.relic)) : null,
     snapshotType: eventData.snapshotType || 'auto',
     isPreEventSnapshot: eventData.isPreEventSnapshot || false,
     parentSnapshotId: eventData.parentSnapshotId || null,
@@ -111,6 +112,7 @@ export function snapshotToSave(snapshot: ChapterSnapshot): SerializedSave {
     identity: JSON.parse(JSON.stringify(snapshot.identity)),
     inventory: JSON.parse(JSON.stringify(snapshot.inventory)),
     growthProgress: JSON.parse(JSON.stringify(snapshot.growthProgress)),
+    relic: snapshot.relic ? JSON.parse(JSON.stringify(snapshot.relic)) : null,
     savedAt: snapshot.timestamp,
   }
 }

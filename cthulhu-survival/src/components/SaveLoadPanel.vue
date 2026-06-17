@@ -40,6 +40,11 @@ function switchMode(m: 'save' | 'load') {
   mode.value = m
   saveStore.refresh()
 }
+
+function goTimeline() {
+  uiStore.toggleSaveLoad()
+  uiStore.toggleTimeline()
+}
 </script>
 
 <template>
@@ -55,6 +60,13 @@ function switchMode(m: 'save' | 'load') {
           <div class="tabs">
             <button class="tab" :class="{ active: mode === 'load' }" @click="switchMode('load')">读取存档</button>
             <button class="tab" :class="{ active: mode === 'save' }" @click="switchMode('save')">保存游戏</button>
+          </div>
+
+          <div class="timeline-entry">
+            <button class="timeline-btn" @click="goTimeline">
+              <span class="timeline-icon">📜</span>
+              <span>章节时间线与回溯</span>
+            </button>
           </div>
 
           <div v-if="mode === 'save'" class="save-name-row">
@@ -254,5 +266,35 @@ function switchMode(m: 'save' | 'load') {
 .btn-danger:hover {
   background: var(--color-danger);
   color: white;
+}
+
+.timeline-entry {
+  margin-bottom: 16px;
+}
+
+.timeline-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.1) 0%, rgba(96, 165, 250, 0.1) 100%);
+  border: 1px solid var(--color-cthulhu-green);
+  border-radius: var(--radius-sm);
+  color: var(--color-cthulhu-green);
+  font-weight: 500;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.timeline-btn:hover {
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.2) 0%, rgba(96, 165, 250, 0.2) 100%);
+  transform: translateY(-1px);
+}
+
+.timeline-icon {
+  font-size: 16px;
 }
 </style>

@@ -1,7 +1,7 @@
 import type { GameState, MapTile, Position, DangerInfo } from '../types/game'
 import type { Identity, SkillEffect } from '../types/identity'
 import type { InventoryItem, CraftRecipe } from '../types/items'
-import type { GameEvent, Ending } from '../types/events'
+import type { GameEvent, Ending, EventChoice } from '../types/events'
 import type { GrowthTreeProgress, GrowthNode } from '../types/growthTree'
 import { MAP_TILES, getTileAt } from '../data/events'
 import { ITEMS } from '../data/items'
@@ -57,6 +57,7 @@ import {
 import type { LootQualityModifier } from '../types/game'
 import { clamp } from '../utils/random'
 import { repairItem as repairItemSystem, canRepair, initializeDurability } from '../systems/durabilitySystem'
+import { createSnapshotFromSave, addSnapshot, mergePermanentUnlocks } from '../utils/snapshot'
 
 export interface EngineState {
   state: GameState
@@ -401,6 +402,13 @@ export class GameEngine {
       this.state.currentEndingId = immediateEnding.id
     }
 
+    if (this.isKeyDecisionEvent(event)) {
+      const choice = event.choices.find(c => c.id === choiceId)
+      if (choice) {
+        this.createChapterSnapshot(event, { choice, success: result.success })
+      }
+    }
+
     return result
   }
 
@@ -564,6 +572,52 @@ export class GameEngine {
 
   canUseActiveGrowthNode(nodeId: string): boolean {
     return canUseActiveNode(nodeId, this.growthProgress)
+  }
+
+  serialize(): SerializedSave {
+    return {
+      state: this.getState(),
+      identity: this.getIdentity(),
+      inventory: this.getInventory(),
+      growthProgress: this.getGrowthProgress(),
+      savedAt: Date.now(),
+    }
+  }
+
+  createChapterSnapshot(
+    event: GameEvent,
+    choiceMade?: { choice: EventChoice; success: boolean } | null,
+    description?: string,
+  ): void {
+    const save = this.serialize()
+    const snapshot = createSnapshotFromSave(save, {
+      eventId: event.id,
+      eventTitle: event.title,
+      eventDescription: event.description,
+      choiceMade: choiceMade
+        ? {
+            choiceId: choiceMade.choice.id,
+            choiceText: choiceMade.choice.text,
+            success: choiceMade.success,
+          }
+        : null,
+      snapshotType: 'auto',
+      description,
+    })
+    addSnapshot(snapshot)
+    this.updatePermanentUnlocks()
+  }
+
+  updatePermanentUnlocks(): void {
+    mergePermanentUnlocks({
+      unlockedEndings: this.state.unlockedEndings,
+      discoveredTiles: this.state.discoveredTiles,
+      triggeredEvents: this.state.triggeredEvents,
+    })
+  }
+
+  isKeyDecisionEvent(event: GameEvent): boolean {
+    return event.onceOnly && event.choices.length >= 2
   }
 }
 

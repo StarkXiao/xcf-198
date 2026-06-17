@@ -12,6 +12,7 @@ import EventDialog from '@components/EventDialog.vue'
 import SaveLoadPanel from '@components/SaveLoadPanel.vue'
 import ReputationPanel from '@components/ReputationPanel.vue'
 import GrowthTreePanel from '@components/GrowthTreePanel.vue'
+import TimelinePanel from '@components/TimelinePanel.vue'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -166,6 +167,9 @@ function checkEndings() {
             <button class="btn-secondary" @click="uiStore.toggleSaveLoad()">
               💾 存档
             </button>
+            <button class="btn-secondary" @click="uiStore.toggleTimeline()">
+              📜 时间线
+            </button>
           </div>
         </div>
 
@@ -219,6 +223,7 @@ function checkEndings() {
 
     <EventDialog />
     <SaveLoadPanel />
+    <TimelinePanel @rewound="() => {}" />
 
     <Teleport to="body">
       <Transition name="modal">

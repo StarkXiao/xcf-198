@@ -9,6 +9,14 @@ import type { GrowthTreeProgress, GrowthNode, GrowthTree } from '@game/types/gro
 import { GameEngine, type SerializedSave } from '@game/engine/GameEngine'
 import type { EventResult } from '@game/systems/eventSystem'
 import { getFactionReputationSummary } from '@game/systems/reputationSystem'
+import {
+  getTimeline,
+  rewindToSnapshot,
+  clearAllSnapshots,
+  deleteSnapshot,
+  getPermanentUnlocks,
+} from '@game/utils/snapshot'
+import type { ChapterSnapshot, PermanentUnlocks } from '@game/types/snapshot'
 
 export const useGameStore = defineStore('game', () => {
   const engine = ref<GameEngine | null>(null)
@@ -244,6 +252,53 @@ export const useGameStore = defineStore('game', () => {
     return engine.value.canUseActiveGrowthNode(nodeId)
   }
 
+  function getSnapshots(): ChapterSnapshot[] {
+    const timeline = getTimeline()
+    return timeline.snapshots.sort((a, b) => b.timestamp - a.timestamp)
+  }
+
+  function getCurrentSnapshotId(): string | null {
+    const timeline = getTimeline()
+    return timeline.currentSnapshotId
+  }
+
+  function rewindToSnapshotById(snapshotId: string): boolean {
+    const result = rewindToSnapshot(snapshotId)
+    if (!result) return false
+    loadFromSave(result.save)
+    messages.value = ['时间回溯...你回到了那个关键的抉择时刻。']
+    return true
+  }
+
+  function removeSnapshot(snapshotId: string): boolean {
+    return deleteSnapshot(snapshotId)
+  }
+
+  function clearSnapshots(): void {
+    clearAllSnapshots()
+  }
+
+  function getPermanentRecords(): PermanentUnlocks {
+    return getPermanentUnlocks()
+  }
+
+  function createManualSnapshot(description?: string): boolean {
+    if (!engine.value || !state.value || !identity.value || !growthProgress.value) return false
+    const event = {
+      id: 'manual_save',
+      title: '手动存档',
+      description: description || '玩家手动创建的存档点',
+      onceOnly: false,
+      priority: 0,
+      type: 'choice' as const,
+      trigger: { type: 'flag_set' as const, flagKey: 'manual' },
+      conditions: [],
+      choices: [],
+    }
+    engine.value.createChapterSnapshot(event, null, description)
+    return true
+  }
+
   return {
     engine,
     state,
@@ -289,5 +344,12 @@ export const useGameStore = defineStore('game', () => {
     checkGrowthNodeUnlock,
     useActiveGrowthNode,
     canUseActiveGrowthNode,
+    getSnapshots,
+    getCurrentSnapshotId,
+    rewindToSnapshotById,
+    removeSnapshot,
+    clearSnapshots,
+    getPermanentRecords,
+    createManualSnapshot,
   }
 })

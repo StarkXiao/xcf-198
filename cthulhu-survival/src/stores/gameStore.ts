@@ -568,7 +568,10 @@ export const useGameStore = defineStore('game', () => {
 
   function finishNightDefense() {
     if (!engine.value) return
-    engine.value.finishNightDefense()
+    const msgs = engine.value.finishNightDefense()
+    if (msgs && msgs.length > 0) {
+      messages.value.push(...msgs)
+    }
     syncFromEngine()
   }
 

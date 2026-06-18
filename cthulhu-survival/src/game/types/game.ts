@@ -14,6 +14,7 @@ export interface DangerInfo {
   tileDanger: number
   nightModifier: number
   pollutionModifier: number
+  dangerAdjustment: number
   description: string
   color: string
   icon: string

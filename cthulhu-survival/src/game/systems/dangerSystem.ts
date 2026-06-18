@@ -6,14 +6,18 @@ import { clamp, weightedRandom, randomInt, chance } from '../utils/random'
 export function calculateDangerInfo(
   tile: MapTile,
   phase: DayPhase,
-  pollution: number
+  pollution: number,
+  dangerAdjustment: number = 0
 ): DangerInfo {
   const tileDanger = tile.danger || 0
   const nightModifier = phase === 'night' ? 1.5 : 1.0
   const pollutionModifier = 1 + (pollution / 100) * 0.8
 
+  const adjustmentSteps = dangerAdjustment
+  const adjustmentMultiplier = 1 + (adjustmentSteps * 0.15)
+
   const baseValue = tileDanger * 2
-  const value = clamp(Math.round(baseValue * nightModifier * pollutionModifier), 0, 100)
+  const value = clamp(Math.round(baseValue * nightModifier * pollutionModifier * adjustmentMultiplier), 0, 100)
 
   let level: DangerInfo['level']
   let description: string
@@ -53,6 +57,7 @@ export function calculateDangerInfo(
     tileDanger,
     nightModifier,
     pollutionModifier,
+    dangerAdjustment,
     description,
     color,
     icon,

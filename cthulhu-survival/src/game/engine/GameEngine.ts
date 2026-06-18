@@ -12,6 +12,7 @@ import {
   createInitialTime,
   consumeAction,
   isNight,
+  advancePhase,
 } from '../systems/timeSystem'
 import {
   createInitialStats,
@@ -413,7 +414,8 @@ export class GameEngine {
 
   getCurrentDangerInfo(tile: MapTile | undefined = this.getCurrentTile()): DangerInfo | null {
     if (!tile) return null
-    return calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution)
+    const dangerAdjustment = (this.state.flags['danger_adjustment'] as number) || 0
+    return calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution, dangerAdjustment)
   }
 
   getLootQualityModifier(): LootQualityModifier | null {
@@ -463,7 +465,8 @@ export class GameEngine {
       }
     }
 
-    const dangerInfo = calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution)
+    const dangerAdjustment = (this.state.flags['danger_adjustment'] as number) || 0
+    const dangerInfo = calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution, dangerAdjustment)
     const lootQualityModifier = calculateLootQualityModifier(dangerInfo)
     const alienationBuffs = getAlienationBuffs(this.state.stats.alienation)
     const actionCost = calculateMovementCost(dangerInfo, 1, alienationBuffs)
@@ -627,6 +630,53 @@ export class GameEngine {
       this.state.nightDefense = createInitialNightDefense(this.state.time.maxActionsPerPhase)
       this.state.nightDefense.active = true
       this.state.status = 'night_defense'
+    } else {
+      const campStatus = this.state.flags['camp_status'] as string || 'intact'
+      const baseMaxActions = this.state.time.maxActionsPerPhase
+      let actionAdjustment = 0
+      let hpRecovery = 0
+      let sanityRecovery = 0
+      let energyRecovery = 0
+      let hungerPenalty = 0
+
+      switch (campStatus) {
+        case 'intact':
+          actionAdjustment = 0
+          hpRecovery = Math.round(this.state.stats.maxHp * 0.05)
+          sanityRecovery = 3
+          energyRecovery = 5
+          break
+        case 'damaged':
+          actionAdjustment = -1
+          hpRecovery = Math.round(this.state.stats.maxHp * 0.02)
+          sanityRecovery = 0
+          energyRecovery = 0
+          hungerPenalty = 5
+          break
+        case 'heavily_damaged':
+          actionAdjustment = -2
+          hpRecovery = 0
+          sanityRecovery = -2
+          energyRecovery = -5
+          hungerPenalty = 10
+          break
+        case 'ruined':
+          actionAdjustment = -3
+          hpRecovery = -Math.round(this.state.stats.maxHp * 0.03)
+          sanityRecovery = -5
+          energyRecovery = -10
+          hungerPenalty = 15
+          break
+      }
+
+      if (actionAdjustment !== 0) {
+        this.state.time.actionsLeft = Math.max(1, this.state.time.actionsLeft + actionAdjustment)
+      }
+
+      this.state.stats.hp = clamp(this.state.stats.hp + hpRecovery, 0, this.state.stats.maxHp)
+      this.state.stats.sanity = clamp(this.state.stats.sanity + sanityRecovery, 0, this.state.stats.maxSanity)
+      this.state.stats.energy = clamp(this.state.stats.energy + energyRecovery, 0, 100)
+      this.state.stats.hunger = clamp(this.state.stats.hunger - hungerPenalty, 0, 100)
     }
     this.state.stats = applyPhaseEffects(this.state.stats, night, this.identity, this.getGrowthEffects())
     this.growthProgress = decrementCooldowns(this.growthProgress)
@@ -663,8 +713,9 @@ export class GameEngine {
 
   executeChoice(event: GameEvent, choiceId: string): EventResult | null {
     const tile = this.getCurrentTile()
+    const dangerAdjustment = (this.state.flags['danger_adjustment'] as number) || 0
     const dangerInfo = tile
-      ? calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution)
+      ? calculateDangerInfo(tile, this.state.time.phase, this.state.stats.pollution, dangerAdjustment)
       : null
 
     const result = executeEventChoice(event, choiceId, this.state, this.identity, dangerInfo, this.getGrowthEffects())
@@ -1732,9 +1783,48 @@ export class GameEngine {
     return result
   }
 
-  finishNightDefense(): void {
+  finishNightDefense(): string[] {
+    const messages: string[] = []
+
+    const result = advancePhase(this.state.time)
+    this.state.time = result.time
+
+    if (result.phaseChanged) {
+      this.handlePhaseChange()
+      messages.push('黎明到来，阳光稍许驱散了阴霾。')
+
+      if (result.dayChanged) {
+        messages.push(`新的一天开始了...第 ${this.state.time.day} 天`)
+
+        const campStatus = this.state.flags['camp_status'] as string || 'intact'
+        const campStatusMsg: Record<string, string> = {
+          intact: '🏚️ 营地状况良好。',
+          damaged: '🏚️ 营地受到轻微损坏，需要修缮。',
+          heavily_damaged: '🏚️ 营地损毁严重，行动力受到限制。',
+          ruined: '🏚️ 营地几乎被摧毁，你在废墟中勉强安身...',
+        }
+        if (campStatusMsg[campStatus]) {
+          messages.push(campStatusMsg[campStatus])
+        }
+
+        const questUpdate = updateQuestProgressOnDayChange(this.state, this.getQuestState())
+        this.state.questState = questUpdate.questState
+        if (questUpdate.messages.length > 0) {
+          messages.push(...questUpdate.messages)
+        }
+      }
+    }
+
     this.state.status = 'playing'
     this.state.nightDefense = undefined
+
+    const ending = checkForImmediateEnding(this.state)
+    if (ending) {
+      this.state.status = 'ending'
+      this.state.currentEndingId = ending.id
+    }
+
+    return messages
   }
 
   getPlacableTrapItems(): { itemId: string; name: string; count: number }[] {

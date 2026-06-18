@@ -5,6 +5,7 @@ import type { GameEvent, Ending, EventChoice } from '../types/events'
 import type { GrowthTreeProgress, GrowthNode } from '../types/growthTree'
 import type { FactionId } from '../types/faction'
 import type { Relic } from '../types/relic'
+import type { DefenseStrategy, TrapSlot, NightDefenseState, NightDefenseResult } from '../types/nightDefense'
 import { MAP_TILES, getTileAt, EVENTS } from '../data/events'
 import { ITEMS } from '../data/items'
 import {
@@ -109,6 +110,20 @@ import {
   type MerchantInteractionResult,
 } from '../systems/merchantSystem'
 import { getMerchantById } from '../data/merchants'
+import {
+  createInitialNightDefense,
+  setDefenseStrategy,
+  placeTrap as placeTrapSystem,
+  removeTrap as removeTrapSystem,
+  allocateSupplies as allocateSuppliesSystem,
+  simulateNight,
+  applyNightDefenseResult,
+  consumeDefenseSupplies,
+  canPlaceTrap as canPlaceTrapSystem,
+  getAvailableSupplyCount,
+  getNextDaySafetyInfo,
+} from '../systems/nightDefenseSystem'
+import type { SupplyAllocation } from '../types/nightDefense'
 
 export interface EngineState {
   state: GameState
@@ -155,6 +170,7 @@ export class GameEngine {
       inventory: initializeDurability(rawInventory),
       reputation: data.state.reputation || createDefaultReputation(),
       merchantState: (data.state as any).merchantState || createInitialMerchantState(),
+      nightDefense: data.state.nightDefense || undefined,
     }
     engine.identity = data.identity
     engine.relic = relic
@@ -193,6 +209,7 @@ export class GameEngine {
       reputation,
       questState: createInitialQuestState(),
       merchantState: createInitialMerchantState(),
+      nightDefense: createInitialNightDefense(),
     }
 
     this.applyRelicBonusActions(relic, state)
@@ -363,6 +380,7 @@ export class GameEngine {
         encounteredMerchants: { ...this.state.merchantState.encounteredMerchants },
         successfulDeals: { ...this.state.merchantState.successfulDeals },
       },
+      nightDefense: this.state.nightDefense ? { ...this.state.nightDefense, config: { ...this.state.nightDefense.config, traps: [...this.state.nightDefense.config.traps], supplies: { ...this.state.nightDefense.config.supplies } }, result: this.state.nightDefense.result ? { ...this.state.nightDefense.result, waves: [...this.state.nightDefense.result.waves], trapsConsumed: [...this.state.nightDefense.result.trapsConsumed], suppliesConsumed: { ...this.state.nightDefense.result.suppliesConsumed }, messages: [...this.state.nightDefense.result.messages] } : null } : undefined,
     }
   }
 
@@ -605,6 +623,11 @@ export class GameEngine {
 
   private handlePhaseChange() {
     const night = isNight(this.state.time)
+    if (night) {
+      this.state.nightDefense = createInitialNightDefense(this.state.time.maxActionsPerPhase)
+      this.state.nightDefense.active = true
+      this.state.status = 'night_defense'
+    }
     this.state.stats = applyPhaseEffects(this.state.stats, night, this.identity, this.getGrowthEffects())
     this.growthProgress = decrementCooldowns(this.growthProgress)
   }
@@ -1594,6 +1617,139 @@ export class GameEngine {
     }
 
     return this.getMerchantInteraction()
+  }
+
+  getNightDefense(): NightDefenseState | undefined {
+    return this.state.nightDefense
+  }
+
+  setNightDefenseStrategy(strategy: DefenseStrategy): { success: boolean; message: string } {
+    if (!this.state.nightDefense || !this.state.nightDefense.active) {
+      return { success: false, message: '当前不在夜间防守阶段' }
+    }
+    this.state.nightDefense = setDefenseStrategy(this.state.nightDefense, strategy)
+    return { success: true, message: `切换为「${strategy === 'patrol' ? '巡逻' : strategy === 'fortify' ? '固守' : strategy === 'rest' ? '休整' : '警戒'}」策略` }
+  }
+
+  placeNightTrap(slot: TrapSlot, itemId: string): { success: boolean; message: string } {
+    if (!this.state.nightDefense || !this.state.nightDefense.active) {
+      return { success: false, message: '当前不在夜间防守阶段' }
+    }
+    const result = placeTrapSystem(this.state.nightDefense, slot, itemId, this.state.inventory)
+    if (result.success) {
+      this.state.nightDefense = result.state
+    }
+    return { success: result.success, message: result.message }
+  }
+
+  removeNightTrap(slot: TrapSlot): { success: boolean; message: string } {
+    if (!this.state.nightDefense || !this.state.nightDefense.active) {
+      return { success: false, message: '当前不在夜间防守阶段' }
+    }
+    const result = removeTrapSystem(this.state.nightDefense, slot)
+    if (result.removedTrap) {
+      this.state.nightDefense = result.state
+      return { success: true, message: `收回了${result.removedTrap.name}` }
+    }
+    return { success: false, message: '该方向没有陷阱' }
+  }
+
+  allocateNightSupplies(type: keyof SupplyAllocation, amount: number): { success: boolean; message: string } {
+    if (!this.state.nightDefense || !this.state.nightDefense.active) {
+      return { success: false, message: '当前不在夜间防守阶段' }
+    }
+    const result = allocateSuppliesSystem(this.state.nightDefense, type, amount, this.state.inventory)
+    if (result.success) {
+      this.state.nightDefense = result.state
+    }
+    return { success: result.success, message: result.message }
+  }
+
+  canPlaceNightTrap(itemId: string): boolean {
+    return canPlaceTrapSystem(itemId)
+  }
+
+  getAvailableSupplyCount(type: keyof SupplyAllocation): number {
+    return getAvailableSupplyCount(this.state.inventory, type)
+  }
+
+  executeNightDefense(): NightDefenseResult {
+    if (!this.state.nightDefense || !this.state.nightDefense.active) {
+      return {
+        waves: [],
+        totalHpDamage: 0,
+        totalSanityDamage: 0,
+        totalPollutionDamage: 0,
+        trapsConsumed: [],
+        suppliesConsumed: { foodUsed: 0, torchUsed: 0, herbUsed: 0 },
+        campDamage: 0,
+        safetyModifier: 0,
+        defenseRating: 'poor',
+        messages: ['当前不在夜间防守阶段'],
+      }
+    }
+
+    const tile = this.getCurrentTile()
+    const dangerInfo = tile ? calculateDangerInfo(tile, 'night', this.state.stats.pollution) : null
+    const dangerValue = dangerInfo ? dangerInfo.value : 20
+
+    const result = simulateNight(
+      this.state.nightDefense.config,
+      dangerValue,
+      this.state.stats.pollution,
+      this.state.stats,
+      this.getGrowthEffects(),
+    )
+
+    this.state.stats = applyNightDefenseResult(
+      this.state.stats,
+      result,
+      this.state.nightDefense.config.strategy,
+    )
+
+    this.state.inventory = consumeDefenseSupplies(
+      this.state.inventory,
+      this.state.nightDefense.config,
+      result,
+    )
+
+    const safetyInfo = getNextDaySafetyInfo(result.safetyModifier)
+    this.state.flags['night_safety_modifier'] = result.safetyModifier
+    this.state.flags['camp_status'] = safetyInfo.campStatus
+    this.state.flags['danger_adjustment'] = safetyInfo.dangerAdjustment
+    result.messages.push(safetyInfo.description)
+
+    this.state.nightDefense.result = result
+    this.state.nightDefense.completed = true
+    this.state.nightDefense.active = false
+
+    const ending = checkForImmediateEnding(this.state)
+    if (ending) {
+      this.state.status = 'ending'
+      this.state.currentEndingId = ending.id
+    }
+
+    return result
+  }
+
+  finishNightDefense(): void {
+    this.state.status = 'playing'
+    this.state.nightDefense = undefined
+  }
+
+  getPlacableTrapItems(): { itemId: string; name: string; count: number }[] {
+    const trapItems: { itemId: string; name: string; count: number }[] = []
+    for (const item of this.state.inventory) {
+      if (canPlaceTrapSystem(item.itemId)) {
+        const itemData = ITEMS[item.itemId]
+        trapItems.push({
+          itemId: item.itemId,
+          name: itemData?.name || item.itemId,
+          count: item.count,
+        })
+      }
+    }
+    return trapItems
   }
 }
 

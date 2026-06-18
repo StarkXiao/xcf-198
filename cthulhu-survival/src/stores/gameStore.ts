@@ -8,6 +8,8 @@ import type { ReputationMap } from '@game/types/faction'
 import type { GrowthTreeProgress, GrowthNode, GrowthTree } from '@game/types/growthTree'
 import type { Merchant, MerchantState } from '@game/types/merchant'
 import type { Relic } from '@game/types/relic'
+import type { DefenseStrategy, TrapSlot, NightDefenseState, NightDefenseResult } from '@game/types/nightDefense'
+import type { SupplyAllocation } from '@game/types/nightDefense'
 import { GameEngine, type SerializedSave } from '@game/engine/GameEngine'
 import type { EventResult } from '@game/systems/eventSystem'
 import { findTriggeredEvents } from '@game/systems/eventSystem'
@@ -123,6 +125,18 @@ export const useGameStore = defineStore('game', () => {
   const merchantSuccessfulDeals = computed<number>(() => {
     if (!engine.value || !merchantInteraction.value?.merchant) return 0
     return engine.value.getSuccessfulDeals(merchantInteraction.value.merchant.id)
+  })
+
+  const nightDefenseActive = computed<boolean>(() => {
+    return state.value?.status === 'night_defense'
+  })
+
+  const nightDefenseState = computed<NightDefenseState | null>(() => {
+    return state.value?.nightDefense || null
+  })
+
+  const nightDefenseCompleted = computed<boolean>(() => {
+    return state.value?.nightDefense?.completed === true
   })
 
   function startGame(selectedIdentity: Identity, selectedRelic: Relic | null = null) {
@@ -513,6 +527,61 @@ export const useGameStore = defineStore('game', () => {
     return true
   }
 
+  function setNightDefenseStrategy(strategy: DefenseStrategy) {
+    if (!engine.value) return { success: false, message: '错误' }
+    const result = engine.value.setNightDefenseStrategy(strategy)
+    syncFromEngine()
+    if (result.success) messages.value.push(result.message)
+    return result
+  }
+
+  function placeNightTrap(slot: TrapSlot, itemId: string) {
+    if (!engine.value) return { success: false, message: '错误' }
+    const result = engine.value.placeNightTrap(slot, itemId)
+    syncFromEngine()
+    if (result.success) messages.value.push(result.message)
+    return result
+  }
+
+  function removeNightTrap(slot: TrapSlot) {
+    if (!engine.value) return { success: false, message: '错误' }
+    const result = engine.value.removeNightTrap(slot)
+    syncFromEngine()
+    if (result.success) messages.value.push(result.message)
+    return result
+  }
+
+  function allocateNightSupplies(type: keyof SupplyAllocation, amount: number) {
+    if (!engine.value) return { success: false, message: '错误' }
+    const result = engine.value.allocateNightSupplies(type, amount)
+    syncFromEngine()
+    return result
+  }
+
+  function executeNightDefense(): NightDefenseResult | null {
+    if (!engine.value) return null
+    const result = engine.value.executeNightDefense()
+    syncFromEngine()
+    messages.value.push(...result.messages)
+    return result
+  }
+
+  function finishNightDefense() {
+    if (!engine.value) return
+    engine.value.finishNightDefense()
+    syncFromEngine()
+  }
+
+  function getPlacableTrapItems() {
+    if (!engine.value) return []
+    return engine.value.getPlacableTrapItems()
+  }
+
+  function getAvailableSupplyCount(type: keyof SupplyAllocation): number {
+    if (!engine.value) return 0
+    return engine.value.getAvailableSupplyCount(type)
+  }
+
   return {
     engine,
     state,
@@ -588,5 +657,16 @@ export const useGameStore = defineStore('game', () => {
     purchaseMerchantItem,
     closeMerchantPanel,
     checkMerchantFlags,
+    nightDefenseActive,
+    nightDefenseState,
+    nightDefenseCompleted,
+    setNightDefenseStrategy,
+    placeNightTrap,
+    removeNightTrap,
+    allocateNightSupplies,
+    executeNightDefense,
+    finishNightDefense,
+    getPlacableTrapItems,
+    getAvailableSupplyCount,
   }
 })

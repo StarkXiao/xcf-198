@@ -2,6 +2,7 @@ import type { InventoryItem } from './items'
 import type { ReputationMap } from './faction'
 import type { QuestState } from './events'
 import type { MerchantState } from './merchant'
+import type { NightDefenseState } from './nightDefense'
 
 export type DayPhase = 'day' | 'night'
 
@@ -145,7 +146,7 @@ export interface GameFlag {
   value: boolean | number | string
 }
 
-export type GameStatus = 'identity_select' | 'playing' | 'paused' | 'event' | 'crafting' | 'ending'
+export type GameStatus = 'identity_select' | 'playing' | 'paused' | 'event' | 'crafting' | 'night_defense' | 'ending'
 
 export interface GameState {
   status: GameStatus
@@ -163,4 +164,5 @@ export interface GameState {
   reputation: ReputationMap
   questState?: QuestState
   merchantState: MerchantState
+  nightDefense?: NightDefenseState
 }

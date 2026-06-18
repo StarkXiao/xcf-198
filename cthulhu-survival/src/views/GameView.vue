@@ -14,6 +14,7 @@ import ReputationPanel from '@components/ReputationPanel.vue'
 import GrowthTreePanel from '@components/GrowthTreePanel.vue'
 import TimelinePanel from '@components/TimelinePanel.vue'
 import MerchantPanel from '@components/MerchantPanel.vue'
+import NightDefensePanel from '@components/NightDefensePanel.vue'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -366,6 +367,8 @@ function doHarvestSpecial() {
       @close="handleMerchantClose"
       @purchase="handleMerchantPurchase"
     />
+
+    <NightDefensePanel />
 
     <Teleport to="body">
       <Transition name="modal">

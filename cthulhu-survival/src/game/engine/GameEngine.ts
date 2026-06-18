@@ -5,7 +5,7 @@ import type { GameEvent, Ending, EventChoice } from '../types/events'
 import type { GrowthTreeProgress, GrowthNode } from '../types/growthTree'
 import type { FactionId } from '../types/faction'
 import type { Relic } from '../types/relic'
-import { MAP_TILES, getTileAt } from '../data/events'
+import { MAP_TILES, getTileAt, EVENTS } from '../data/events'
 import { ITEMS } from '../data/items'
 import {
   createInitialTime,
@@ -325,6 +325,17 @@ export class GameEngine {
     return effects
   }
 
+  getRelicStartEvent(): GameEvent | null {
+    if (!this.relic) return null
+    for (const effect of this.relic.effects) {
+      if (effect.type === 'trigger_start_event' && effect.eventId) {
+        const event = EVENTS.find(e => e.id === effect.eventId)
+        if (event) return event
+      }
+    }
+    return null
+  }
+
   private getInitialDiscoveredTiles(start: Position): string[] {
     const discovered: string[] = []
     for (let dx = -1; dx <= 1; dx++) {
@@ -619,6 +630,12 @@ export class GameEngine {
     }
     this.state.currentEventId = event.id
     this.state.status = 'event'
+  }
+
+  getCurrentEvent(): GameEvent | null {
+    if (!this.state.currentEventId) return null
+    const evt = EVENTS.find(e => e.id === this.state.currentEventId)
+    return evt || null
   }
 
   executeChoice(event: GameEvent, choiceId: string): EventResult | null {

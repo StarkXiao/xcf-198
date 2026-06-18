@@ -138,6 +138,16 @@ export const useGameStore = defineStore('game', () => {
     } else {
       messages.value = [`你以「${selectedIdentity.name}」的身份降临到这片诡秘之地...`]
     }
+
+    setTimeout(() => {
+      if (!engine.value) return
+      const startEvent = engine.value.getRelicStartEvent()
+      if (startEvent) {
+        engine.value.triggerEvent(startEvent)
+        syncFromEngine()
+        currentEvent.value = startEvent
+      }
+    }, 300)
   }
 
   function syncFromEngine() {
@@ -350,6 +360,11 @@ export const useGameStore = defineStore('game', () => {
     engine.value = GameEngine.fromSerialized(save)
     syncFromEngine()
     messages.value = ['读取存档成功。']
+
+    if (state.value && state.value.currentEventId) {
+      const evt = engine.value.getCurrentEvent()
+      if (evt) currentEvent.value = evt
+    }
   }
 
   function addMessage(msg: string) {

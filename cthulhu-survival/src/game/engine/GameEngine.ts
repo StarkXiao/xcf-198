@@ -111,8 +111,7 @@ import {
   type MerchantInteractionResult,
 } from '../systems/merchantSystem'
 import { getMerchantById } from '../data/merchants'
-import {
-  createInitialNightDefense,
+import { createInitialNightDefense,
   setDefenseStrategy,
   placeTrap as placeTrapSystem,
   removeTrap as removeTrapSystem,
@@ -125,6 +124,20 @@ import {
   getNextDaySafetyInfo,
 } from '../systems/nightDefenseSystem'
 import type { SupplyAllocation } from '../types/nightDefense'
+import {
+  createInitialInvestigationLog,
+  addEntryFromEvent,
+  addEntryFromScouting,
+  addEntryFromMerchant,
+  addEntryFromNight,
+  markEntryAsRead,
+  markAllAsRead,
+  getUnreadCount,
+  getEntriesByCategory,
+  searchEntries,
+  getRelatedEntries,
+} from '../systems/investigationLogSystem'
+import type { InvestigationLogState, LogCategory } from '../types/investigationLog'
 
 export interface EngineState {
   state: GameState
@@ -172,6 +185,7 @@ export class GameEngine {
       reputation: data.state.reputation || createDefaultReputation(),
       merchantState: (data.state as any).merchantState || createInitialMerchantState(),
       nightDefense: data.state.nightDefense || undefined,
+      investigationLog: data.state.investigationLog || createInitialInvestigationLog(),
     }
     engine.identity = data.identity
     engine.relic = relic
@@ -211,6 +225,7 @@ export class GameEngine {
       questState: createInitialQuestState(),
       merchantState: createInitialMerchantState(),
       nightDefense: createInitialNightDefense(),
+      investigationLog: createInitialInvestigationLog(),
     }
 
     this.applyRelicBonusActions(relic, state)
@@ -802,6 +817,17 @@ export class GameEngine {
 
     this.updatePermanentUnlocks()
 
+    if (this.state.investigationLog) {
+      this.state.investigationLog = addEntryFromEvent(
+        this.state.investigationLog,
+        event,
+        result.messages,
+        this.state,
+        result.success,
+        result.consequences.triggeredEvents.length > 0 ? result.consequences.triggeredEvents.map(() => ({ type: 'trigger_event' as const })) : undefined,
+      )
+    }
+
     return result
   }
 
@@ -1155,6 +1181,17 @@ export class GameEngine {
     if (ending) {
       this.state.status = 'ending'
       this.state.currentEndingId = ending.id
+    }
+
+    if (result.success && this.state.investigationLog && result.messages.length > 0) {
+      this.state.investigationLog = addEntryFromScouting(
+        this.state.investigationLog,
+        `侦查: ${tile.name}`,
+        result.messages.join('\n'),
+        this.state,
+        tile.name,
+        tile.id,
+      )
     }
 
     return result
@@ -1629,6 +1666,16 @@ export class GameEngine {
       this.state.currentEndingId = ending.id
     }
 
+    if (purchase.result.success && this.state.investigationLog && purchase.result.messages.length > 0) {
+      this.state.investigationLog = addEntryFromMerchant(
+        this.state.investigationLog,
+        `交易: ${merchant.name}`,
+        purchase.result.messages.join('\n'),
+        this.state,
+        merchant.id,
+      )
+    }
+
     return {
       success: purchase.result.success,
       messages: purchase.result.messages,
@@ -1724,6 +1771,38 @@ export class GameEngine {
     return getAvailableSupplyCount(this.state.inventory, type)
   }
 
+  getInvestigationLog(): InvestigationLogState {
+    return this.state.investigationLog || createInitialInvestigationLog()
+  }
+
+  markInvestigationEntryAsRead(entryId: string): void {
+    if (this.state.investigationLog) {
+      this.state.investigationLog = markEntryAsRead(this.state.investigationLog, entryId)
+    }
+  }
+
+  markAllInvestigationEntriesAsRead(): void {
+    if (this.state.investigationLog) {
+      this.state.investigationLog = markAllAsRead(this.state.investigationLog)
+    }
+  }
+
+  getInvestigationUnreadCount(): number {
+    return this.state.investigationLog ? getUnreadCount(this.state.investigationLog) : 0
+  }
+
+  getInvestigationEntriesByCategory(category: LogCategory) {
+    return this.state.investigationLog ? getEntriesByCategory(this.state.investigationLog, category) : []
+  }
+
+  searchInvestigationEntries(query: string) {
+    return this.state.investigationLog ? searchEntries(this.state.investigationLog, query) : []
+  }
+
+  getInvestigationRelatedEntries(entryId: string) {
+    return this.state.investigationLog ? getRelatedEntries(this.state.investigationLog, entryId) : []
+  }
+
   executeNightDefense(): NightDefenseResult {
     if (!this.state.nightDefense || !this.state.nightDefense.active) {
       return {
@@ -1773,6 +1852,15 @@ export class GameEngine {
     this.state.nightDefense.result = result
     this.state.nightDefense.completed = true
     this.state.nightDefense.active = false
+
+    if (this.state.investigationLog && result.messages.length > 0) {
+      this.state.investigationLog = addEntryFromNight(
+        this.state.investigationLog,
+        `夜间防御: 第${this.state.time.day}天`,
+        result.messages.join('\n'),
+        this.state,
+      )
+    }
 
     const ending = checkForImmediateEnding(this.state)
     if (ending) {

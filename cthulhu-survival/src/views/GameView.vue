@@ -15,11 +15,12 @@ import GrowthTreePanel from '@components/GrowthTreePanel.vue'
 import TimelinePanel from '@components/TimelinePanel.vue'
 import MerchantPanel from '@components/MerchantPanel.vue'
 import NightDefensePanel from '@components/NightDefensePanel.vue'
+import InvestigationLogPanel from '@components/InvestigationLogPanel.vue'
 
 const router = useRouter()
 const gameStore = useGameStore()
 const uiStore = useUiStore()
-const { state, identity, currentTile, messages, currentDangerInfo, lootQualityModifier, availableGrowthNodes, newUnlockNotification, scoutingPotionActive, scoutingPotionTurns, availableScoutingActions, currentMerchant, merchantAvailableItems, merchantDialogue, merchantSuccessfulDeals, merchantPanelVisible, reputation } = storeToRefs(gameStore)
+const { state, identity, currentTile, messages, currentDangerInfo, lootQualityModifier, availableGrowthNodes, newUnlockNotification, scoutingPotionActive, scoutingPotionTurns, availableScoutingActions, currentMerchant, merchantAvailableItems, merchantDialogue, merchantSuccessfulDeals, merchantPanelVisible, reputation, investigationUnreadCount } = storeToRefs(gameStore)
 const { activePanel } = storeToRefs(uiStore)
 
 const merchantPanelRef = ref<InstanceType<typeof MerchantPanel> | null>(null)
@@ -302,6 +303,14 @@ function doHarvestSpecial() {
             <button class="btn-secondary" @click="uiStore.toggleTimeline()">
               📜 时间线
             </button>
+            <button
+              class="btn-secondary investigation-btn"
+              :class="{ 'has-unread': investigationUnreadCount > 0 }"
+              @click="uiStore.toggleInvestigationLog()"
+            >
+              🔎 调查
+              <span v-if="investigationUnreadCount > 0" class="inv-badge">{{ investigationUnreadCount }}</span>
+            </button>
           </div>
         </div>
 
@@ -356,6 +365,8 @@ function doHarvestSpecial() {
     <EventDialog />
     <SaveLoadPanel />
     <TimelinePanel @rewound="() => {}" />
+    <InvestigationLogPanel />
+
     <MerchantPanel
       ref="merchantPanelRef"
       :visible="merchantPanelVisible"
@@ -603,6 +614,38 @@ function doHarvestSpecial() {
 .action-btns .btn-secondary {
   padding: 10px 14px !important;
   font-size: 12px !important;
+}
+
+.investigation-btn {
+  position: relative;
+}
+
+.investigation-btn.has-unread {
+  border-color: var(--color-cthulhu-green) !important;
+  animation: inv-pulse 2s ease-in-out infinite;
+}
+
+@keyframes inv-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(94, 201, 138, 0.3); }
+  50% { box-shadow: 0 0 8px 2px rgba(94, 201, 138, 0.15); }
+}
+
+.inv-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: linear-gradient(135deg, #E74C3C, #C0392B);
+  color: white;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(231, 76, 60, 0.4);
 }
 
 .map-container {

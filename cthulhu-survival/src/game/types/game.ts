@@ -3,6 +3,7 @@ import type { ReputationMap } from './faction'
 import type { QuestState } from './events'
 import type { MerchantState } from './merchant'
 import type { NightDefenseState } from './nightDefense'
+import type { InvestigationLogState } from './investigationLog'
 
 export type DayPhase = 'day' | 'night'
 
@@ -166,4 +167,5 @@ export interface GameState {
   questState?: QuestState
   merchantState: MerchantState
   nightDefense?: NightDefenseState
+  investigationLog?: InvestigationLogState
 }

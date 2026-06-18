@@ -7,6 +7,7 @@ export const useUiStore = defineStore('ui', () => {
   const activePanel = ref<PanelName>(null)
   const showSaveLoad = ref(false)
   const showTimeline = ref(false)
+  const showInvestigationLog = ref(false)
   const isLoading = ref(false)
 
   function togglePanel(panel: PanelName) {
@@ -17,6 +18,7 @@ export const useUiStore = defineStore('ui', () => {
     activePanel.value = null
     showSaveLoad.value = false
     showTimeline.value = false
+    showInvestigationLog.value = false
   }
 
   function toggleSaveLoad() {
@@ -24,6 +26,7 @@ export const useUiStore = defineStore('ui', () => {
     if (showSaveLoad.value) {
       activePanel.value = null
       showTimeline.value = false
+      showInvestigationLog.value = false
     }
   }
 
@@ -32,6 +35,16 @@ export const useUiStore = defineStore('ui', () => {
     if (showTimeline.value) {
       activePanel.value = null
       showSaveLoad.value = false
+      showInvestigationLog.value = false
+    }
+  }
+
+  function toggleInvestigationLog() {
+    showInvestigationLog.value = !showInvestigationLog.value
+    if (showInvestigationLog.value) {
+      activePanel.value = null
+      showSaveLoad.value = false
+      showTimeline.value = false
     }
   }
 
@@ -39,10 +52,12 @@ export const useUiStore = defineStore('ui', () => {
     activePanel,
     showSaveLoad,
     showTimeline,
+    showInvestigationLog,
     isLoading,
     togglePanel,
     closeAllPanels,
     toggleSaveLoad,
     toggleTimeline,
+    toggleInvestigationLog,
   }
 })

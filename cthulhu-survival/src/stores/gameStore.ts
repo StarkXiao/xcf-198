@@ -10,6 +10,7 @@ import type { Merchant, MerchantState } from '@game/types/merchant'
 import type { Relic } from '@game/types/relic'
 import type { DefenseStrategy, TrapSlot, NightDefenseState, NightDefenseResult } from '@game/types/nightDefense'
 import type { SupplyAllocation } from '@game/types/nightDefense'
+import type { InvestigationLogState, LogCategory } from '@game/types/investigationLog'
 import { GameEngine, type SerializedSave } from '@game/engine/GameEngine'
 import type { EventResult } from '@game/systems/eventSystem'
 import { findTriggeredEvents } from '@game/systems/eventSystem'
@@ -125,6 +126,16 @@ export const useGameStore = defineStore('game', () => {
   const merchantSuccessfulDeals = computed<number>(() => {
     if (!engine.value || !merchantInteraction.value?.merchant) return 0
     return engine.value.getSuccessfulDeals(merchantInteraction.value.merchant.id)
+  })
+
+  const investigationLog = computed<InvestigationLogState>(() => {
+    if (!engine.value) return { entries: [], discoveredTags: [], linkedClues: [] }
+    return engine.value.getInvestigationLog()
+  })
+
+  const investigationUnreadCount = computed<number>(() => {
+    if (!engine.value) return 0
+    return engine.value.getInvestigationUnreadCount()
   })
 
   const nightDefenseActive = computed<boolean>(() => {
@@ -585,6 +596,33 @@ export const useGameStore = defineStore('game', () => {
     return engine.value.getAvailableSupplyCount(type)
   }
 
+  function markInvestigationEntryAsRead(entryId: string) {
+    if (!engine.value) return
+    engine.value.markInvestigationEntryAsRead(entryId)
+    syncFromEngine()
+  }
+
+  function markAllInvestigationEntriesAsRead() {
+    if (!engine.value) return
+    engine.value.markAllInvestigationEntriesAsRead()
+    syncFromEngine()
+  }
+
+  function getInvestigationEntriesByCategory(category: LogCategory) {
+    if (!engine.value) return []
+    return engine.value.getInvestigationEntriesByCategory(category)
+  }
+
+  function searchInvestigationEntries(query: string) {
+    if (!engine.value) return []
+    return engine.value.searchInvestigationEntries(query)
+  }
+
+  function getInvestigationRelatedEntries(entryId: string) {
+    if (!engine.value) return []
+    return engine.value.getInvestigationRelatedEntries(entryId)
+  }
+
   return {
     engine,
     state,
@@ -618,6 +656,8 @@ export const useGameStore = defineStore('game', () => {
     merchantSuccessfulDeals,
     merchantPanelVisible,
     lastMerchantPurchaseResult,
+    investigationLog,
+    investigationUnreadCount,
     startGame,
     moveTo,
     executeChoice,
@@ -671,5 +711,10 @@ export const useGameStore = defineStore('game', () => {
     finishNightDefense,
     getPlacableTrapItems,
     getAvailableSupplyCount,
+    markInvestigationEntryAsRead,
+    markAllInvestigationEntriesAsRead,
+    getInvestigationEntriesByCategory,
+    searchInvestigationEntries,
+    getInvestigationRelatedEntries,
   }
 })
